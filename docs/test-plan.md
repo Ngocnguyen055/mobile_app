@@ -1,0 +1,77 @@
+# Kế hoạch kiểm thử và bằng chứng
+
+Ghi kết quả thật vào `docs/evidence/` theo mẫu: ngày/giờ, commit, máy/Android OS, mạng, bước làm, expected, actual, log/ảnh, người thực hiện. Bảng này là kịch bản, không phải tuyên bố đã qua.
+
+| ID | Loại | Bước thao tác | Kết quả mong đợi | Tự động |
+|---|---|---|---|---|
+| F1 | Chức năng | Đăng ký An, đăng xuất, đăng nhập lại | Token hợp lệ; sau đăng nhập mở lịch tổng hợp của An mà không cần chọn dự án | Chưa, cần Mongo/Android |
+| F2 | Chức năng | An tạo dự án, thêm Bình và Chi theo email | Cả ba thấy dự án; người ngoài bị 403 | Chưa, cần Mongo |
+| F3 | Chức năng | Tạo task cho Bình; chọn `Bắt đầu` và `Kết thúc (deadline)` bằng hai popup native, tải lại rồi Bình đổi `doing → done` | Hai mốc được lưu đúng; tiến độ Bình tăng; `dueAt` điều khiển nhắc hạn và nhắc cũ bị hủy | Picker và create/reload/delete đã kiểm tra Android/Mongo; status và notification còn phải thử |
+| F4 | Chức năng | Từ lịch sau đăng nhập, chuyển ngày/tuần/tháng; dùng đúng ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`; mở modal gần toàn màn hình để thêm/sửa, rồi xem và xóa sự kiện; chọn bắt đầu/kết thúc bằng popup ngày và spinner giờ | Form có trường `Nội dung sự kiện`; hiện `dd/MM/yyyy`, tuần `T2…CN`; picker 24 giờ trả đúng giờ Việt Nam; task và sự kiện đúng phạm vi xuất hiện; dữ liệu sau tải lại đúng | Helper có test; native picker đã build, CRUD/notification vẫn cần Android/Mongo |
+| F4a | Chức năng/UI | Ở `Tất cả` và `Cá nhân`, kiểm tra chỉ có `+ Thêm sự kiện`; ở `Dự án`, kiểm tra không có nút thêm sự kiện/task và dùng `Xem / sửa` trên mục dự án. Vào tab `Lịch` của dự án và cuộn nội dung ở cả hai màn hình | Mục dự án mở đúng dự án/tab; lịch dự án không có nút tạo; khối `Hiển thị` và thanh quay lại/tab dự án vẫn cố định khi cuộn dọc | `calendar-policy.test.ts` đạt 4/4; giao diện và điều hướng đã xác nhận bằng ADB ngày 28/09/2026 |
+| F5 | Chức năng | Kết nối Google, đồng bộ hai lần với task được giao cùng sự kiện cá nhân/dự án | Không nhân đôi mục; các mục được upsert vào lịch chính | Chưa, cần Google credential |
+| F6 | Chức năng | Bật 1 tuần/1 ngày/1 giờ cho task, sửa deadline rồi hoàn thành | Thông báo cũ hủy, chỉ còn mốc hợp lệ; task `done` không nhắc | Chưa, cần Android |
+| F6b | Chức năng | Tạo sự kiện có nhắc, đổi thời gian/mốc nhắc, sau đó xóa sự kiện | Lịch nhắc cũ bị hủy khi sửa, chỉ lịch mới còn hiệu lực; xóa sự kiện thì không còn thông báo | Chưa, cần Android |
+| F7 | Chức năng | Ba peer online, tạo nhóm, nhắn cả nhóm | Hai recipient có ACK riêng, lưu lịch sử | Có, `tests/peer.test.ts` qua relay |
+| F8 | Chức năng | Thêm/xóa bài thảo luận, upload/tải file 300 KiB, chỉnh ngân sách | Dữ liệu cập nhật, ACL đúng | Chưa, cần Mongo/Android |
+| C1 | Đồng thời | An và Bình cùng PATCH một task với version giống nhau | Một cập nhật thành công, một 409; tải lại trước khi sửa | Chưa, cần Mongo |
+| C2 | Đồng thời | Hai peer cùng sửa nhóm từ version 1 | Một thay đổi thành công, một bị từ chối stale version | Có, `tests/services.test.ts` |
+| E1 | Lỗi/phục hồi | Ép DIRECT fail, nhắn A→B | Sau timeout tự RELAY, B ACK, có relay FORWARD | Có với DataChannel giả lập; cần mạng thật |
+| E2 | Lỗi/phục hồi | Tắt B đột ngột, gửi A→B; mở B lại | Presence chuyển offline; tin cũ failed, lịch sử cục bộ phục hồi, tin mới gửi được | Chưa, cần demo ba peer |
+| S1 | Dữ liệu sai/bảo mật | Relay gửi senderId khác token; body >4000 | Relay từ chối, không chuyển | Có, `tests/services.test.ts` |
+| S2 | Dữ liệu sai/bảo mật | User ngoài dự án gọi endpoint file/task | HTTP 403, không lộ dữ liệu | Chưa, cần Mongo |
+| S3 | Dữ liệu sai/bảo mật | User B gọi sửa/xóa sự kiện cá nhân của User A; tạo event có kết thúc trước bắt đầu, mốc nhắc lạ hoặc `createdBy` giả | Không truy cập được sự kiện A; payload sai bị HTTP 400 | Có, `scripts/verify-calendar.ts` trên Atlas |
+| S4 | Dữ liệu sai/bảo mật | Gọi API tạo/sửa task với `startsAt` bằng hoặc sau `dueAt` | HTTP 400; task không bị tạo hoặc cập nhật; version hiện tại không đổi | Có, `tests/api-task-window.test.ts` với model/API và DB mock; chưa chạy payload sai trên Mongo thật |
+| P1 | Hiệu năng | Chạy 100 envelope relay tuần tự với `scripts/benchmark-relay.ts` | In p50/p95/max và số lượng 100; ghi cấu hình máy | Đã đo localhost; xem `evidence/benchmark.txt` |
+
+Test đã thực thi trên máy phát triển: `npm test` đạt 18 test trong 7 file `protocol`, `services`, `peer`, `api-auth`, `api-task-window`, `calendar`, `calendar-policy`. Các test dịch vụ chạy signaling và relay HTTP/Socket.IO thật trên cổng động và kiểm tra API từ chối request không có token; test task kiểm tra tương thích dữ liệu cũ, khoảng thời gian sai và PATCH có version với DB mock. DataChannel trong test E1 là lớp giả lập cố tình không mở. `tests/calendar.test.ts` có 5 test thuần: tiêu đề `T2…CN`, lưới tháng 09/2026 căn từ thứ Hai, tuần chứa Chủ nhật, định dạng/múi giờ Việt Nam, chuyển ngày UTC qua nửa đêm, giới hạn cuối tháng và năm nhuận. `tests/calendar-policy.test.ts` có 4 test cho đúng ba phạm vi, cách tách mục cá nhân/dự án, quyền tạo và lấy ID dự án cho điều hướng. `npm run test:calendar-api` cũng đã chạy với MongoDB Atlas và đạt lịch tổng hợp, CRUD, cô lập event cá nhân giữa hai user, quyền sửa/chuyển event dự án, từ chối giờ/offset/`createdBy` sai và xóa dọn dữ liệu tạm. Không suy ra hành vi notification Android hoặc DIRECT WebRTC thật từ các test này.
+
+### Kịch bản lịch và notification trên Android
+
+1. Đăng nhập rồi xác nhận màn hình đầu tiên là **Lịch của tôi**; thanh `Hiển thị` có đúng `Tất cả`, `Cá nhân`, `Dự án`, không liệt kê tên từng dự án. Task được giao từ nhiều dự án, sự kiện cá nhân và sự kiện dự án cùng xuất hiện nhưng mục ngoài quyền không xuất hiện.
+2. Ở chế độ tháng, xác nhận hàng `T2, T3, T4, T5, T6, T7, CN`, ngày 01/09/2026 nằm dưới `T3`, ngày chọn hiển thị `dd/MM/yyyy`; kiểm tra thêm ngày/tuần và chuyển qua cuối tháng.
+3. Ở `Tất cả` và `Cá nhân`, xác nhận có `+ Thêm sự kiện` nhưng không có `+ Thêm task`. Chuyển sang `Dự án`, xác nhận cả hai nút tạo đều không xuất hiện; các card dự án chỉ có `Xem / sửa` và mở đúng dự án/tab tương ứng.
+4. Cuộn nội dung lịch đủ xa để lưới tháng đi khỏi màn hình; xác nhận khối `Lịch của tôi / Hiển thị` vẫn ở trên. Vào một dự án, cuộn danh sách task và xác nhận `← Danh sách`, tên dự án cùng hàng tab vẫn cố định.
+5. Vào tab `Lịch` của dự án; xác nhận không có nút thêm sự kiện/task. Trở lại lịch chính, dùng `Xem / sửa` trên một sự kiện dự án và xác nhận editor mở đúng sự kiện trong đúng dự án.
+6. Mở form modal từ `Tất cả` hoặc `Cá nhân`, nhập `Nội dung sự kiện`, chọn mốc nhắc và tạo sự kiện cá nhân; đóng/mở lại app rồi xác nhận dữ liệu vẫn còn. Mở lại modal để sửa nội dung, giờ và mốc nhắc; xác nhận chỉ thông báo theo cấu hình mới được phát.
+7. Xóa sự kiện trước giờ nhắc; xác nhận sự kiện biến mất sau tải lại và thông báo đã lên lịch không còn được phát. Lặp lại với một sự kiện gắn dự án.
+8. Với task, đổi deadline rồi đánh dấu `done`; xác nhận notification cũ bị hủy và task hoàn thành không tạo nhắc mới.
+
+Ngày 28/09/2026, Android emulator và ADB đã xác nhận các bước 1, 3, 4, 5 về phạm vi, nút thao tác, điều hướng và thanh cố định. Ảnh thật nằm trong `docs/evidence/`. Các bước CRUD/notification ở 6–8 vẫn cần chạy riêng; các ảnh này không chứng minh notification đã phát hoặc bị hủy.
+
+### Kịch bản hai mốc thời gian của task trên Android
+
+1. Vào `Dự án` → chọn một dự án → `Task`; xác nhận form có hai trường `Bắt đầu` và `Kết thúc (deadline)`, không còn ô nhập deadline dạng văn bản.
+2. Chạm `Bắt đầu`, chọn ngày và giờ trên popup native; lặp lại với `Kết thúc (deadline)`. Tạo task, tải lại dự án và xác nhận cả hai mốc vẫn đúng theo định dạng Việt Nam.
+3. Mở `Sửa` trên task vừa tạo; đổi cả hai mốc bằng popup, lưu và tải lại. Kiểm tra lịch dùng mốc kết thúc để đặt task vào ngày deadline, còn phần chi tiết hiển thị khoảng bắt đầu đến kết thúc.
+4. Thử chọn thời gian kết thúc bằng hoặc trước thời gian bắt đầu. App/API phải báo lỗi và không lưu thay đổi.
+5. Mở một task cũ không có `startsAt`; xác nhận app vẫn đọc được, cho phép chọn bổ sung mốc bắt đầu rồi lưu. Kiểm tra nhắc hạn, sắp quá hạn và quá hạn vẫn dựa trên `dueAt`.
+
+Ngày 28/09/2026, development build trên Android emulator đã xác nhận hai trường, popup ngày/giờ 24 giờ cho cả hai trường và luồng tạo → tải lại dự án → hiển thị hai mốc → xóa task tạm với MongoDB đã cấu hình. Ảnh thật nằm trong `docs/evidence/`. Các bước sửa task, thử khoảng thời gian đảo trên Mongo thật và notification vẫn cần nhóm thực hiện theo kịch bản trên.
+
+Để nhận kết quả nhanh, có thể đặt sự kiện cách hiện tại hơn 1 giờ một vài phút và chọn mốc 1 giờ. Ghi giờ thiết bị, quyền notification, thời gian sửa/xóa và kết quả thực tế vào `docs/evidence/`; không dùng ảnh hoặc log giả.
+
+### Ma trận thiết bị/mạng cần nhóm chạy
+
+1. Ba web peer trên cùng máy để kiểm tra giao diện, DIRECT trình duyệt, relay ép bằng checkbox, nhóm, log.
+2. Một Android development build để kiểm tra lịch tổng hợp, định dạng Việt Nam, modal tạo/sửa sự kiện, CRUD và cập nhật/hủy notification; sau đó dùng hai Android development build và một web peer trên cùng Wi-Fi để xác nhận `react-native-webrtc`, DataChannel và SQLite chat.
+3. Ba peer trên ít nhất hai mạng (ví dụ hai Wi-Fi khác nhau/4G), signaling và relay qua HTTPS/WSS công khai; thử DIRECT trước, nếu NAT chặn thì RELAY.
+4. Ngắt process relay trong lúc DIRECT đang chạy rồi mất DIRECT: khi cả hai đường đều mất, tin phải failed; khởi động relay lại rồi gửi tin mới.
+5. Thử Google OAuth bằng credential của nhóm trên Android có Play Services và tài khoản thử nghiệm; chụp trước/sau Google Calendar, xác nhận sync lần hai không trùng.
+
+### Các lệnh kiểm tra
+
+```powershell
+npm run typecheck
+npm run lint
+npm test
+npm test -- tests/calendar-policy.test.ts --silent
+npm run test:calendar-api
+npm run build -w @ds01/web-peer
+Push-Location src/mobile
+npx expo install --check
+Pop-Location
+npx tsx scripts/benchmark-relay.ts
+```
+
+Kiểm tra API F1–F4, F8, C1, S2, S3 cần MongoDB chạy. F4/F6/F6b cần Android để xác nhận notification thật; F5 cần credential Google của nhóm. Nếu môi trường chưa đáp ứng thì ghi `not run`, không thay bằng dữ liệu giả.

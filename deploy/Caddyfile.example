@@ -1,0 +1,15 @@
+# Replace these hostnames with domains that resolve to your server.
+api.example.org {
+  reverse_proxy 127.0.0.1:4000
+}
+signal.example.org {
+  reverse_proxy 127.0.0.1:4001
+}
+relay.example.org {
+  reverse_proxy 127.0.0.1:4002
+}
+peer.example.org {
+  root * /srv/student-planner/src/web-peer/dist
+  try_files {path} /index.html
+  file_server
+}

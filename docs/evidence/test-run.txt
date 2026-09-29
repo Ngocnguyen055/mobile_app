@@ -1,0 +1,60 @@
+Command: npm.cmd test -- --silent
+Environment: Windows, Node.js v24.14.0
+Captured from the final unit/integration test run on 2026-09-28:
+
+✓ tests/protocol.test.ts (1 test)
+✓ tests/services.test.ts (2 tests)
+✓ tests/api-auth.test.ts (1 test)
+✓ tests/api-task-window.test.ts (3 tests)
+✓ tests/peer.test.ts (2 tests)
+✓ tests/calendar.test.ts (5 tests)
+✓ tests/calendar-policy.test.ts (4 tests)
+Test Files  7 passed (7)
+Tests       18 passed (18)
+
+Command: npm.cmd run test:calendar-api
+Result: Calendar API integration passed: aggregate, CRUD, two-user ACL, project move, validation, cleanup
+Database: configured MongoDB Atlas database. The script creates one temporary event and deletes it in finally.
+
+The peer fallback test uses a simulated DataChannel that never opens. It does not prove real WebRTC DIRECT.
+The Calendar API script does not prove Android notification delivery or Google OAuth.
+
+Calendar UI follow-up on 2026-09-28:
+- npm.cmd run typecheck: passed
+- npm.cmd run lint: passed
+- npm.cmd test -- --silent: 7 files, 18 tests passed
+- npm.cmd run export -w @ds01/mobile: Android bundle passed (852 modules)
+- gradlew.bat app:assembleDebug -x lint -x test --configure-on-demand: BUILD SUCCESSFUL; native DateTimePicker compiled and autolinked
+
+Android emulator UI follow-up on 2026-09-28:
+- adb reverse tcp:8081 tcp:8081 connected the development build to Metro without changing application data.
+- The create button opened a near-full-screen modal with `Nội dung sự kiện`, start/end controls and fixed Cancel/Create actions.
+- The start control opened the native Android date spinner above the modal.
+- Continuing from the date spinner opened the native 24-hour time spinner at 09:00 without AM/PM.
+- Editing an existing event opened the same modal with Cancel/Save actions.
+- UI Automator found no `Ghi chú` label in either modal.
+- Both modals and the picker were canceled; the check did not create, update or delete data.
+
+Task time-window UI/API follow-up on Android emulator on 2026-09-28:
+- The create form displayed separate `Bắt đầu` and `Kết thúc (deadline)` controls; there was no editable deadline text field.
+- Both controls opened an Android date spinner followed by a 24-hour time spinner without AM/PM.
+- A temporary task was created through the app, the project was opened again, and the returned task card showed `Bắt đầu: 28/09/2026 15:51` and `Kết thúc: 28/09/2026 16:51`.
+- The temporary task was deleted through the app. A refreshed UI Automator tree no longer contained its title.
+- This check used the configured MongoDB connection. It did not test deadline notification delivery or editing an existing task.
+
+Vietnamese physical-keyboard IME, notification delivery and Google OAuth still require separate device checks.
+
+Calendar scope/action policy follow-up on 2026-09-28:
+- Command: npm.cmd test -- tests/calendar-policy.test.ts --silent
+- Result: 1 file passed, 4 tests passed.
+- The four tests cover exactly three aggregate scopes, personal/project filtering, creation permissions and project ID extraction for navigation.
+- The final complete `npm.cmd test -- --silent` run also passed 7 files and 18 tests, as recorded above.
+
+Calendar scope and fixed-toolbar UI follow-up on Android emulator on 2026-09-28:
+- ADB/UI Automator confirmed the main calendar exposes exactly `Tất cả`, `Cá nhân`, `Dự án` instead of one chip per project.
+- `Tất cả` and `Cá nhân` expose `+ Thêm sự kiện` and no task-creation action. `Dự án` exposes neither event nor task creation.
+- Project task/event cards use `Xem / sửa`; selecting a project event opened its editor in the correct project context (`Thuộc lịch: Test`).
+- The `Lịch của tôi / Hiển thị` toolbar remained above vertically scrolled calendar content.
+- The project back/title/tab toolbar remained above vertically scrolled task content.
+- The project `Lịch` tab showed no event/task creation action.
+- These checks did not prove Android notification delivery or Google synchronization.

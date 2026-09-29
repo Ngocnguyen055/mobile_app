@@ -1,0 +1,10 @@
+node_modules/
+.npm-cache/
+.env
+.expo/
+dist/
+coverage/
+*.log
+*.db
+android/
+ios/

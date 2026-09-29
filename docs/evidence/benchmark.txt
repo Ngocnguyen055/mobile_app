@@ -1,0 +1,13 @@
+Command: node_modules\.bin\tsx.cmd scripts/benchmark-relay.ts
+Environment: Windows, Node.js v24.14.0, signaling and relay as separate local processes on localhost.
+Method: 100 sequential relay text messages from one headless peer to another; measure from send to recipient Socket.IO delivery. No Android, WebRTC, internet path or application ACK in this benchmark.
+
+{
+  "count": 100,
+  "p50_ms": 0.5451000000000477,
+  "p95_ms": 1.0230999999999995,
+  "max_ms": 123.44959999999998,
+  "measuredAt": "2026-09-16T16:36:28.612Z",
+  "signalUrl": "http://localhost:4001",
+  "relayUrl": "http://localhost:4002"
+}

@@ -1,0 +1,36 @@
+{
+  "name": "student-planner-ds01",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "src/shared",
+    "src/api",
+    "src/signaling",
+    "src/relay",
+    "src/web-peer",
+    "src/mobile"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @ds01/api",
+    "dev:signaling": "npm run dev -w @ds01/signaling",
+    "dev:relay": "npm run dev -w @ds01/relay",
+    "dev:web": "npm run dev -w @ds01/web-peer",
+    "dev:mobile": "npm run start -w @ds01/mobile",
+    "typecheck": "tsc --noEmit -p src/shared && tsc --noEmit -p src/api && tsc --noEmit -p src/signaling && tsc --noEmit -p src/relay && tsc --noEmit -p src/web-peer && tsc --noEmit -p src/mobile",
+    "test": "vitest run",
+    "test:calendar-api": "tsx scripts/verify-calendar.ts",
+    "lint": "eslint src tests scripts --ext .ts,.tsx",
+    "seed": "tsx scripts/seed.ts",
+    "android": "npm run android -w @ds01/mobile",
+    "ios": "npm run ios -w @ds01/mobile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.35.0",
+    "@typescript-eslint/parser": "^8.35.0",
+    "eslint": "^9.30.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
