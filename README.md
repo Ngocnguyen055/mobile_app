@@ -10,39 +10,239 @@ Monorepo TypeScript cho bài tập lớn nhóm ba sinh viên: ứng dụng Andro
 - Development build đã chạy sau đăng nhập trên Android emulator. Ngày 28/09/2026, ADB đã xác nhận ba phạm vi lịch, chính sách nút tạo, điều hướng `Xem / sửa`, lịch dự án không có nút tạo và hai thanh công cụ cố định khi cuộn; ảnh thật nằm trong `docs/evidence/`. Việc phát, cập nhật và hủy notification vẫn cần nhóm kiểm tra riêng theo `docs/test-plan.md`.
 - Khi chạy demo thật, lưu log và ảnh vào `docs/evidence/` theo `docs/demo-script.md`. Không có ảnh hoặc số đo thực tế nào được dựng sẵn.
 
-## Yêu cầu
+## Yêu cầu trước khi clone
 
-Node.js 20.19+ (đã dùng Node 24), npm, MongoDB 7, Android SDK + JDK để build Android, ba trình duyệt hoặc điện thoại cho demo. Docker chỉ cần nếu muốn khởi động MongoDB bằng Compose.
+- Git, Node.js `>=20.19.4` và npm. Repository hiện đã được kiểm tra với Node.js 24.14.0.
+- MongoDB Atlas hoặc MongoDB cục bộ. Docker chỉ là lựa chọn phụ để chạy MongoDB cục bộ.
+- Android Studio có Android SDK Platform 36, Build Tools 36.0.0, Platform Tools, Emulator, Command-line Tools và một thiết bị trong Device Manager.
+- JDK đi kèm Android Studio. Trên Windows, đường dẫn mặc định thường là `C:\Program Files\Android\Android Studio\jbr`.
 
-## Chạy local
+Android Studio chỉ cần để cài SDK và khởi động máy ảo; không bắt buộc mở source code của repository trong Android Studio. Ứng dụng dùng `react-native-webrtc`, vì vậy phải chạy **Expo development build** và không thể dùng Expo Go.
+
+## Chạy lần đầu sau khi clone
+
+Các lệnh dưới đây chạy tại **thư mục gốc của repository**. Trên Windows PowerShell, tài liệu dùng `npm.cmd` để tránh lỗi execution policy; trên macOS/Linux có thể thay bằng `npm`.
+
+### 1. Clone, cài package và tạo `.env`
 
 ```powershell
+git clone https://github.com/Ngocnguyen055/mobile_app.git Mobile_App
+Set-Location Mobile_App
+npm.cmd ci
 Copy-Item .env.example .env
-npm install
-docker compose -f deploy/compose.yaml up -d mongo  # tùy chọn; hoặc MongoDB cài sẵn
-npm run seed
 ```
 
-Mở **bốn terminal riêng**, chạy:
+Trên macOS/Linux, dùng `cd Mobile_App`, `npm ci` và `cp .env.example .env`. Chỉ sửa file `.env`. Không dán mật khẩu hoặc connection string thật vào `.env.example`, vì file mẫu được đưa lên GitHub. `.env` đã nằm trong `.gitignore`.
+
+### 2. Cấu hình MongoDB
+
+Với MongoDB Atlas:
+
+1. Tạo database user trong **Database Access**.
+2. Cho phép IP hiện tại trong **Network Access**.
+3. Lấy connection string ở **Connect → Drivers** và chọn Node.js.
+4. Điền database name, ví dụ `student_planner`, rồi gán chuỗi đó cho `MONGO_URL` trong `.env`.
+
+Ví dụ cấu trúc, không dùng nguyên giá trị này:
+
+```dotenv
+MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/student_planner?retryWrites=true&w=majority
+```
+
+Nếu mật khẩu có ký tự như `@`, `:`, `/` hoặc `#`, phải URL encode mật khẩu trước khi đưa vào connection string. `JWT_SECRET` và `PEER_SECRET` nên là hai chuỗi ngẫu nhiên khác nhau, dài ít nhất 32 ký tự.
+
+Nếu muốn dùng MongoDB cục bộ bằng Docker Desktop, giữ nguyên `MONGO_URL=mongodb://127.0.0.1:27017/student_planner` rồi chạy trước bước seed:
 
 ```powershell
-npm run dev:api
-npm run dev:signaling
-npm run dev:relay
-npm run dev:web
+docker compose -f deploy/compose.yaml up -d mongo
 ```
 
-Web peer ở `http://localhost:5173`. Mở ba trình duyệt hoặc ba profile riêng với Peer ID `peer-a`, `peer-b`, `peer-c`; mỗi profile có secret riêng trong localStorage. Seed tạo `an@example.test`, `binh@example.test`, `chi@example.test` với mật khẩu mẫu `StudentDemo123!`. Chỉ dùng tài khoản mẫu ở local.
+Nếu dùng Android Emulator mặc định của Android Studio, đặt các URL mobile như sau:
 
-Android: sửa `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SIGNAL_URL`, `EXPO_PUBLIC_RELAY_URL` trong `.env` thành IP LAN máy chủ; `localhost` trên điện thoại là điện thoại. Biến `EXPO_PUBLIC_*` được nạp lúc Metro/build chạy. Trong `src/mobile`:
+```dotenv
+EXPO_PUBLIC_API_URL=http://10.0.2.2:4000
+EXPO_PUBLIC_SIGNAL_URL=http://10.0.2.2:4001
+EXPO_PUBLIC_RELAY_URL=http://10.0.2.2:4002
+```
+
+`10.0.2.2` là địa chỉ để Android Emulator truy cập máy Windows đang chạy server. Nếu dùng điện thoại thật, thay bằng IPv4 LAN của máy tính, ví dụ `http://192.168.1.20:4000`, và cho phép các cổng qua Windows Firewall. Các biến `PUBLIC_*` và `VITE_*` cho server/web vẫn dùng `localhost` khi chạy trên cùng máy.
+
+Để Google Calendar trống hai biến `EXPO_PUBLIC_GOOGLE_*` cho đến khi nhóm tạo OAuth client thật. Các phần đăng nhập, dự án, task và lịch nội bộ vẫn chạy bình thường.
+
+### 3. Cấu hình Java và Android SDK trên Windows
+
+Mở PowerShell mới và đặt biến cho terminal hiện tại:
 
 ```powershell
-npx expo prebuild --platform android
-npx expo run:android
-npx expo start --dev-client
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:ANDROID_HOME = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+java -version
+adb version
 ```
 
-Development build phải được tạo lại sau khi thay native dependency/config plugin. `react-native-webrtc` dùng plugin `@config-plugins/react-native-webrtc`. Thử chat trực tiếp trên Android **ngay khi có APK**, trước khi mở rộng demo: đăng nhập hai máy cùng Wi-Fi, chọn chat dự án, gửi và xác nhận nhãn DIRECT và relay log không có `FORWARD` của Message ID đó. Nếu không DIRECT, lấy ICE state/log và sửa trước khi tuyên bố chức năng chạy.
+Để lưu cho các terminal mở sau này:
+
+```powershell
+$androidSdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+$javaHome = "C:\Program Files\Android\Android Studio\jbr"
+[Environment]::SetEnvironmentVariable("JAVA_HOME", $javaHome, "User")
+[Environment]::SetEnvironmentVariable("ANDROID_HOME", $androidSdk, "User")
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$pathParts = @($userPath -split ';' | Where-Object { $_ })
+foreach ($entry in @("$javaHome\bin", "$androidSdk\platform-tools")) {
+  if ($pathParts -notcontains $entry) { $pathParts = @($entry) + $pathParts }
+}
+[Environment]::SetEnvironmentVariable("Path", ($pathParts -join ';'), "User")
+```
+
+Đóng và mở lại PowerShell sau khi lưu biến. Chạy `where.exe java`, `java -version`, `adb version` để phát hiện một JDK cũ còn đứng trước trong `PATH`. Nếu Android SDK nằm ở thư mục khác, xem đường dẫn thật tại **Android Studio → Settings → Android SDK** rồi dùng đường dẫn đó. Trong Android Studio, mở **SDK Manager**, cài đủ các thành phần nêu ở phần yêu cầu và chấp nhận Android SDK licenses.
+
+### 4. Tạo dữ liệu mẫu và chạy API
+
+Seed là tùy chọn; có thể bỏ qua và đăng ký tài khoản mới trong ứng dụng.
+
+```powershell
+npm.cmd run seed
+```
+
+Lệnh seed ghi trực tiếp vào database được chỉ ra bởi `MONGO_URL` và có thể chạy lại để bổ sung phần dữ liệu mẫu còn thiếu. Không chạy seed trên database production hoặc database chứa dữ liệu cần giữ nguyên.
+
+Seed thành công sẽ in ba tài khoản:
+
+| Email | Mật khẩu |
+|---|---|
+| `an@example.test` | `StudentDemo123!` |
+| `binh@example.test` | `StudentDemo123!` |
+| `chi@example.test` | `StudentDemo123!` |
+
+Chỉ dùng các tài khoản và mật khẩu mẫu trong môi trường học tập/phát triển.
+
+Mở terminal thứ nhất tại thư mục gốc:
+
+```powershell
+npm.cmd run dev:api
+```
+
+Có thể kiểm tra API và MongoDB bằng:
+
+```powershell
+Invoke-RestMethod http://localhost:4000/health
+```
+
+Kết quả cần có `service: api` và `mongo: True`.
+
+### 5. Build và chạy ứng dụng Android
+
+Khởi động máy ảo trong **Android Studio → Device Manager** và đợi Android vào màn hình chính. Ở terminal thứ hai, vẫn tại thư mục gốc, chạy:
+
+```powershell
+npm.cmd run android
+```
+
+Lệnh này gọi `expo run:android` đúng trong workspace `src/mobile`, tự tạo thư mục native nếu bản clone chưa có, build development client, cài APK lên máy ảo và khởi động Metro. Lần đầu có thể mất vài phút. Không chạy `npx expo run:android` tại thư mục gốc vì cấu hình mobile thật nằm trong `src/mobile`.
+
+Sau khi development client đã được cài, những lần chạy tiếp theo chỉ cần:
+
+```powershell
+npm.cmd run dev:mobile
+```
+
+Nhấn `a` để mở app trên Android hoặc `r` để reload app đang mở. Phải khởi động lại Metro sau khi thay đổi biến `EXPO_PUBLIC_*`. Chỉ cần build lại development client khi đổi native dependency, plugin hoặc cấu hình Android.
+
+### 6. Chạy chat và web peer DS01
+
+Các chức năng tài khoản, dự án, task và lịch chỉ cần API. Nếu muốn kiểm tra chat ngay khi mở app, hãy khởi động signaling và relay trước bước chạy Android. Mở thêm hai terminal và chạy signaling trước relay:
+
+```powershell
+npm.cmd run dev:signaling
+```
+
+```powershell
+npm.cmd run dev:relay
+```
+
+Kiểm tra hai dịch vụ:
+
+```powershell
+Invoke-RestMethod http://localhost:4001/health
+Invoke-RestMethod http://localhost:4002/health
+```
+
+Để mở web peer, chạy thêm:
+
+```powershell
+npm.cmd run dev:web
+```
+
+| Thành phần | Địa chỉ local |
+|---|---|
+| API | `http://localhost:4000` |
+| Signaling | `http://localhost:4001` |
+| Relay | `http://localhost:4002` |
+| Web peer | `http://localhost:5173` |
+| Metro | `http://localhost:8081` |
+
+Mở ba cửa sổ hoặc profile trình duyệt riêng và đăng ký `peer-a`, `peer-b`, `peer-c` để chạy demo web. Mỗi profile giữ secret Peer ID riêng trong localStorage.
+
+Thứ tự đầy đủ khi chạy cả Mobile và DS01 là: MongoDB → seed một lần → API → signaling → relay → Android/Metro; web peer là tùy chọn.
+
+Development build phải được tạo lại sau khi thay native dependency/config plugin. `react-native-webrtc` dùng plugin `@config-plugins/react-native-webrtc`. Thử chat trực tiếp trên Android **ngay khi có APK**: đăng nhập hai máy cùng Wi-Fi, chọn chat dự án, gửi và xác nhận nhãn DIRECT và relay log không có `FORWARD` của Message ID đó. Nếu không DIRECT, lấy ICE state/log và sửa trước khi tuyên bố chức năng chạy.
+
+## Lỗi cài đặt thường gặp
+
+### `Unsupported class file major version 69`
+
+Terminal đang dùng JDK quá mới. Trỏ `JAVA_HOME` về thư mục `jbr` của Android Studio, mở terminal mới rồi chạy lại `npm.cmd run android`. Có thể dừng Gradle daemon cũ trước khi build lại:
+
+```powershell
+Push-Location src/mobile/android
+.\gradlew.bat --stop
+Pop-Location
+```
+
+### `SDK location not found`
+
+Kiểm tra `ANDROID_HOME`. Nếu vẫn lỗi và thư mục `src/mobile/android` đã được tạo, tạo file `src/mobile/android/local.properties` với đường dẫn SDK của chính máy đó:
+
+```properties
+sdk.dir=C:/Users/<ten-windows>/AppData/Local/Android/Sdk
+```
+
+Không đưa `local.properties` của máy cá nhân lên GitHub.
+
+### `Activity not started, unable to resolve Intent`
+
+Development client chưa được cài hoặc máy ảo chưa khởi động xong. Cold Boot máy ảo nếu cần, đợi màn hình Android xuất hiện rồi chạy `npm.cmd run android`. Sau khi APK đã được cài mới dùng `npm.cmd run dev:mobile`.
+
+### MongoDB Atlas báo `querySrv ECONNREFUSED`
+
+Kiểm tra lại Atlas Network Access, database user, connection string và DNS SRV:
+
+```powershell
+Resolve-DnsName -Type SRV _mongodb._tcp.<cluster>.mongodb.net
+```
+
+Nếu PowerShell phân giải được nhưng Node.js vẫn bị từ chối, thử mạng khác hoặc đổi DNS của Windows sang DNS công cộng, mở terminal mới rồi chạy lại. Không chuyển sang database giả để bỏ qua lỗi Atlas.
+
+### App không gọi được API
+
+- Android Emulator dùng `10.0.2.2`, không dùng `localhost`.
+- Điện thoại thật dùng IPv4 LAN của máy chạy API và phải cùng mạng Wi-Fi.
+- Sau khi sửa `.env`, dừng Metro bằng `Ctrl+C` rồi chạy lại `npm.cmd run dev:mobile`.
+- Kiểm tra `http://localhost:4000/health` trên máy tính trước.
+
+### PowerShell báo `npm.ps1 cannot be loaded`
+
+Dùng `npm.cmd` và `npx.cmd` như các lệnh trong README, hoặc chạy lệnh bằng Command Prompt. Không cần thay execution policy của toàn máy chỉ để chạy repository này.
+
+### `adb devices` không thấy máy ảo
+
+Đợi máy ảo vào màn hình chính rồi chạy `adb devices`. Nếu danh sách vẫn trống, dùng **Cold Boot Now** trong Device Manager, kiểm tra Platform Tools và khởi động lại ADB bằng `adb kill-server`, sau đó `adb start-server`.
+
+### Cổng đã được sử dụng
+
+API, signaling, relay và Metro lần lượt dùng cổng 4000, 4001, 4002 và 8081. Dừng process cũ hoặc terminal Metro cũ trước khi chạy thêm một bản; không mở hai Metro trên cùng cổng.
 
 ## Lịch trên Android
 
@@ -69,18 +269,18 @@ Thông báo được lên lịch cục bộ trên Android. Khi thời gian hoặ
 ## Lệnh kiểm tra
 
 ```powershell
-npm run typecheck
-npm run lint
-npm test
-npm run test:calendar-api
-npm run build -w @ds01/web-peer
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run test:calendar-api
+npm.cmd run build -w @ds01/web-peer
 Push-Location src/mobile
-npx expo install --check
+npx.cmd expo install --check
 Pop-Location
-npx tsx scripts/benchmark-relay.ts
+npx.cmd tsx scripts/benchmark-relay.ts
 ```
 
-`benchmark-relay.ts` cần signaling và relay đang chạy; in p50/p95/max của 100 lần gửi, chỉ xem là bằng chứng nếu thực sự chạy và lưu đầu ra. `scripts/simulate-fault.ps1` chạy riêng test DataChannel cố tình không mở để tái hiện fallback. `docs/test-plan.md` có ca kiểm thử thủ công cho API, thiết bị, mạng và OAuth.
+`test:calendar-api` cần MongoDB đang chạy, `MONGO_URL` đúng và dữ liệu seed. `benchmark-relay.ts` cần signaling và relay đang chạy; script in p50/p95/max của 100 lần gửi, chỉ xem là bằng chứng nếu thực sự chạy và lưu đầu ra. `scripts/simulate-fault.ps1` chạy riêng test DataChannel cố tình không mở để tái hiện fallback. `docs/test-plan.md` có ca kiểm thử thủ công cho API, thiết bị, mạng và OAuth.
 
 ## Cấu hình Google Calendar
 
