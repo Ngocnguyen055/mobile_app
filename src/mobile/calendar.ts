@@ -1,19 +1,27 @@
-export const WEEKDAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] as const;
+export const WEEKDAY_LABELS = [
+  "T2",
+  "T3",
+  "T4",
+  "T5",
+  "T6",
+  "T7",
+  "CN",
+] as const;
 
-export type CalendarMode = 'day' | 'week' | 'month';
+export type CalendarMode = "day" | "week" | "month";
 export type DateInput = Date | string | number;
 
-const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
-const invalidDateMessage = 'Ngày giờ không hợp lệ. Dùng dd/MM/yyyy HH:mm';
-const partsFormatter = new Intl.DateTimeFormat('en-CA', {
+const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
+const invalidDateMessage = "Ngày giờ không hợp lệ. Dùng dd/MM/yyyy HH:mm";
+const partsFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: VIETNAM_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hourCycle: 'h23'
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
 });
 
 type DateParts = {
@@ -26,15 +34,16 @@ type DateParts = {
 };
 
 function asDate(input: DateInput) {
-  const date = input instanceof Date ? new Date(input.getTime()) : new Date(input);
-  if (Number.isNaN(date.getTime())) throw new Error('Ngày không hợp lệ');
+  const date =
+    input instanceof Date ? new Date(input.getTime()) : new Date(input);
+  if (Number.isNaN(date.getTime())) throw new Error("Ngày không hợp lệ");
   return date;
 }
 
 function vietnamParts(input: DateInput): DateParts {
   const values: Record<string, number> = {};
   for (const part of partsFormatter.formatToParts(asDate(input))) {
-    if (part.type !== 'literal') values[part.type] = Number(part.value);
+    if (part.type !== "literal") values[part.type] = Number(part.value);
   }
   return {
     year: values.year,
@@ -42,12 +51,12 @@ function vietnamParts(input: DateInput): DateParts {
     day: values.day,
     hour: values.hour,
     minute: values.minute,
-    second: values.second
+    second: values.second,
   };
 }
 
 function pad(value: number) {
-  return String(value).padStart(2, '0');
+  return String(value).padStart(2, "0");
 }
 
 function daysInMonth(year: number, month: number) {
@@ -55,14 +64,38 @@ function daysInMonth(year: number, month: number) {
 }
 
 /** Creates an instant from civil date/time fields in Asia/Ho_Chi_Minh. */
-function vietnamDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0, millisecond = 0) {
-  const requestedAsUtc = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+function vietnamDate(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+  millisecond = 0,
+) {
+  const requestedAsUtc = Date.UTC(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond,
+  );
   let result = new Date(requestedAsUtc);
 
   // Resolve the time-zone offset using Intl instead of depending on the host's time zone.
   for (let attempt = 0; attempt < 2; attempt++) {
     const actual = vietnamParts(result);
-    const actualAsUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second, millisecond);
+    const actualAsUtc = Date.UTC(
+      actual.year,
+      actual.month - 1,
+      actual.day,
+      actual.hour,
+      actual.minute,
+      actual.second,
+      millisecond,
+    );
     result = new Date(result.getTime() + requestedAsUtc - actualAsUtc);
   }
   return result;
@@ -93,8 +126,8 @@ export function formatViMonth(input: DateInput) {
 }
 
 export function formatViCalendarTitle(input: DateInput, mode: CalendarMode) {
-  if (mode === 'month') return formatViMonth(input);
-  if (mode === 'day') return formatViDate(input);
+  if (mode === "month") return formatViMonth(input);
+  if (mode === "day") return formatViDate(input);
   const week = buildWeekDays(input);
   return `Tuần ${formatViDate(week[0])} – ${formatViDate(week[6])}`;
 }
@@ -104,7 +137,9 @@ export function toViDateTimeInput(input: DateInput) {
 }
 
 export function parseViDateTime(input: string) {
-  const match = input.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
+  const match = input
+    .trim()
+    .match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
   if (!match) throw new Error(invalidDateMessage);
 
   const [, dayText, monthText, yearText, hourText, minuteText] = match;
@@ -115,14 +150,22 @@ export function parseViDateTime(input: string) {
   const minute = Number(minuteText);
   if (
     year < 1000 ||
-    month < 1 || month > 12 ||
-    day < 1 || day > daysInMonth(year, month) ||
-    hour < 0 || hour > 23 ||
-    minute < 0 || minute > 59
-  ) throw new Error(invalidDateMessage);
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  )
+    throw new Error(invalidDateMessage);
 
   const parsed = vietnamDate(year, month, day, hour, minute);
-  if (formatViDateTime(parsed) !== `${dayText}/${monthText}/${yearText} ${hourText}:${minuteText}`) {
+  if (
+    formatViDateTime(parsed) !==
+    `${dayText}/${monthText}/${yearText} ${hourText}:${minuteText}`
+  ) {
     throw new Error(invalidDateMessage);
   }
   return parsed;
@@ -132,7 +175,10 @@ export function buildMonthGrid(input: DateInput): (Date | null)[] {
   const { year, month } = vietnamParts(input);
   const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const leadingBlanks = (firstWeekday + 6) % 7;
-  const grid: (Date | null)[] = Array.from({ length: leadingBlanks }, () => null);
+  const grid: (Date | null)[] = Array.from(
+    { length: leadingBlanks },
+    () => null,
+  );
   for (let day = 1; day <= daysInMonth(year, month); day++) {
     grid.push(vietnamDate(year, month, day));
   }
@@ -148,20 +194,46 @@ export function buildWeekDays(input: DateInput): Date[] {
   return Array.from({ length: 7 }, (_, index) => {
     const current = new Date(civilDate);
     current.setUTCDate(civilDate.getUTCDate() + index);
-    return vietnamDate(current.getUTCFullYear(), current.getUTCMonth() + 1, current.getUTCDate());
+    return vietnamDate(
+      current.getUTCFullYear(),
+      current.getUTCMonth() + 1,
+      current.getUTCDate(),
+    );
   });
 }
 
-export function moveCalendarDate(input: DateInput, mode: CalendarMode, direction: -1 | 1) {
+export function moveCalendarDate(
+  input: DateInput,
+  mode: CalendarMode,
+  direction: -1 | 1,
+) {
   const source = asDate(input);
   const { year, month, day, hour, minute, second } = vietnamParts(source);
-  if (mode === 'month') {
+  if (mode === "month") {
     const target = new Date(Date.UTC(year, month - 1 + direction, 1));
     const targetYear = target.getUTCFullYear();
     const targetMonth = target.getUTCMonth() + 1;
-    return vietnamDate(targetYear, targetMonth, Math.min(day, daysInMonth(targetYear, targetMonth)), hour, minute, second, source.getUTCMilliseconds());
+    return vietnamDate(
+      targetYear,
+      targetMonth,
+      Math.min(day, daysInMonth(targetYear, targetMonth)),
+      hour,
+      minute,
+      second,
+      source.getUTCMilliseconds(),
+    );
   }
 
-  const target = new Date(Date.UTC(year, month - 1, day + direction * (mode === 'week' ? 7 : 1)));
-  return vietnamDate(target.getUTCFullYear(), target.getUTCMonth() + 1, target.getUTCDate(), hour, minute, second, source.getUTCMilliseconds());
+  const target = new Date(
+    Date.UTC(year, month - 1, day + direction * (mode === "week" ? 7 : 1)),
+  );
+  return vietnamDate(
+    target.getUTCFullYear(),
+    target.getUTCMonth() + 1,
+    target.getUTCDate(),
+    hour,
+    minute,
+    second,
+    source.getUTCMilliseconds(),
+  );
 }

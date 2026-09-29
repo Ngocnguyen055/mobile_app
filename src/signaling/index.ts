@@ -1,112 +1,236 @@
-import { config as loadEnv } from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import express from 'express';
-import { createServer, type Server as HttpServer } from 'node:http';
-import jwt from 'jsonwebtoken';
-import { Server, type Socket } from 'socket.io';
-import { randomUUID } from 'node:crypto';
-import { createHash } from 'node:crypto';
-import { peerIdSchema, type Group } from '@ds01/shared';
+import { config as loadEnv } from "dotenv";
+import { fileURLToPath } from "node:url";
+import express from "express";
+import { createServer, type Server as HttpServer } from "node:http";
+import jwt from "jsonwebtoken";
+import { Server, type Socket } from "socket.io";
+import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { peerIdSchema, type Group } from "@ds01/shared";
 
-loadEnv({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
-if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || !process.env.PEER_SECRET || process.env.PEER_SECRET.length < 32)) throw new Error('JWT_SECRET and PEER_SECRET must each be at least 32 characters in production');
+loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
+if (
+  process.env.NODE_ENV === "production" &&
+  (!process.env.JWT_SECRET ||
+    process.env.JWT_SECRET.length < 32 ||
+    !process.env.PEER_SECRET ||
+    process.env.PEER_SECRET.length < 32)
+)
+  throw new Error(
+    "JWT_SECRET and PEER_SECRET must each be at least 32 characters in production",
+  );
 type Peer = { socket: Socket; lastSeen: number };
-type Reply = (response: { ok: boolean; error?: string; token?: string; peers?: string[]; groups?: Group[]; group?: Group }) => void;
-const PEER_SECRET = process.env.PEER_SECRET || 'local-development-only-secret';
-const JWT_SECRET = process.env.JWT_SECRET || 'local-development-only-secret';
+type Reply = (response: {
+  ok: boolean;
+  error?: string;
+  token?: string;
+  peers?: string[];
+  groups?: Group[];
+  group?: Group;
+}) => void;
+const PEER_SECRET = process.env.PEER_SECRET || "local-development-only-secret";
+const JWT_SECRET = process.env.JWT_SECRET || "local-development-only-secret";
 export function createSignaling(httpServer: HttpServer = createServer()) {
   const app = express();
   const peers = new Map<string, Peer>();
   const groups = new Map<string, Group>();
   const demoSecrets = new Map<string, string>();
-  httpServer.on('request', app);
-  const io = new Server(httpServer, { cors: { origin: '*' }, maxHttpBufferSize: 16_384 });
-  app.get('/health', (_req, res) => res.json({ service: 'signaling', peers: peers.size }));
-  app.get('/internal/groups/:id', (req, res) => {
-    if (req.header('x-peer-secret') !== PEER_SECRET) return res.sendStatus(403);
+  httpServer.on("request", app);
+  const io = new Server(httpServer, {
+    cors: { origin: "*" },
+    maxHttpBufferSize: 16_384,
+  });
+  app.get("/health", (_req, res) =>
+    res.json({ service: "signaling", peers: peers.size }),
+  );
+  app.get("/internal/groups/:id", (req, res) => {
+    if (req.header("x-peer-secret") !== PEER_SECRET) return res.sendStatus(403);
     const group = groups.get(req.params.id);
     return group ? res.json(group) : res.sendStatus(404);
   });
-  const publishPresence = () => io.emit('presence', [...peers.keys()]);
+  const publishPresence = () => io.emit("presence", [...peers.keys()]);
   const peerFor = (socket: Socket) => socket.data.peerId as string | undefined;
-  io.on('connection', socket => {
-    socket.on('peer:register', (input: unknown, reply: Reply) => {
-      if (typeof reply !== 'function') return;
-      const { peerId: requestedId, identityProof } = (input || {}) as Record<string, unknown>;
+  io.on("connection", (socket) => {
+    socket.on("peer:register", (input: unknown, reply: Reply) => {
+      if (typeof reply !== "function") return;
+      const { peerId: requestedId, identityProof } = (input || {}) as Record<
+        string,
+        unknown
+      >;
       const parsed = peerIdSchema.safeParse(requestedId);
-      if (!parsed.success) return reply({ ok: false, error: 'invalid peer ID' });
+      if (!parsed.success)
+        return reply({ ok: false, error: "invalid peer ID" });
       const peerId = parsed.data;
-      if (typeof identityProof !== 'string') return reply({ ok: false, error: 'identity proof required' });
+      if (typeof identityProof !== "string")
+        return reply({ ok: false, error: "identity proof required" });
       if (/^[a-f\d]{24}$/i.test(peerId)) {
-        try { const token = jwt.verify(identityProof, JWT_SECRET) as jwt.JwtPayload; if (token.sub !== peerId) throw new Error('wrong account'); }
-        catch { return reply({ ok: false, error: 'invalid account token' }); }
+        try {
+          const token = jwt.verify(identityProof, JWT_SECRET) as jwt.JwtPayload;
+          if (token.sub !== peerId) throw new Error("wrong account");
+        } catch {
+          return reply({ ok: false, error: "invalid account token" });
+        }
       } else {
-        if (identityProof.length < 16) return reply({ ok: false, error: 'demo peer secret too short' });
-        const hash = createHash('sha256').update(identityProof).digest('hex');
-        if (demoSecrets.has(peerId) && demoSecrets.get(peerId) !== hash) return reply({ ok: false, error: 'peer ID belongs to another demo peer' });
+        if (identityProof.length < 16)
+          return reply({ ok: false, error: "demo peer secret too short" });
+        const hash = createHash("sha256").update(identityProof).digest("hex");
+        if (demoSecrets.has(peerId) && demoSecrets.get(peerId) !== hash)
+          return reply({
+            ok: false,
+            error: "peer ID belongs to another demo peer",
+          });
         demoSecrets.set(peerId, hash);
       }
-      if (peers.has(peerId) && peers.get(peerId)?.socket.id !== socket.id) return reply({ ok: false, error: 'peer ID already online' });
+      if (peers.has(peerId) && peers.get(peerId)?.socket.id !== socket.id)
+        return reply({ ok: false, error: "peer ID already online" });
       const previous = peerFor(socket);
       if (previous && previous !== peerId) peers.delete(previous);
       socket.data.peerId = peerId;
       peers.set(peerId, { socket, lastSeen: Date.now() });
-      const token = jwt.sign({ sub: peerId }, PEER_SECRET, { expiresIn: '12h' });
+      const token = jwt.sign({ sub: peerId }, PEER_SECRET, {
+        expiresIn: "12h",
+      });
       console.log(`[signal] REGISTER ${peerId}`);
-      reply({ ok: true, token, peers: [...peers.keys()], groups: [...groups.values()].filter(g => g.members.includes(peerId)) });
-      socket.emit('peer:ready');
+      reply({
+        ok: true,
+        token,
+        peers: [...peers.keys()],
+        groups: [...groups.values()].filter((g) => g.members.includes(peerId)),
+      });
+      socket.emit("peer:ready");
       publishPresence();
     });
-    socket.on('peer:heartbeat', () => { const id = peerFor(socket); if (id && peers.get(id)?.socket.id === socket.id) peers.get(id)!.lastSeen = Date.now(); });
-    socket.on('peer:list', (reply: Reply) => { if (typeof reply === 'function') reply({ ok: true, peers: [...peers.keys()] }); });
-    socket.on('signal:send', (input: unknown, reply: Reply) => {
+    socket.on("peer:heartbeat", () => {
+      const id = peerFor(socket);
+      if (id && peers.get(id)?.socket.id === socket.id)
+        peers.get(id)!.lastSeen = Date.now();
+    });
+    socket.on("peer:list", (reply: Reply) => {
+      if (typeof reply === "function")
+        reply({ ok: true, peers: [...peers.keys()] });
+    });
+    socket.on("signal:send", (input: unknown, reply: Reply) => {
       const senderId = peerFor(socket);
-      const value = input as { to?: unknown; kind?: unknown; data?: unknown } | null;
-      if (!senderId || !value || !peerIdSchema.safeParse(value.to).success || !['request','offer','answer','ice'].includes(String(value.kind)) || JSON.stringify(value).length > 12_000) return reply?.({ ok: false, error: 'invalid signaling data' });
+      const value = input as {
+        to?: unknown;
+        kind?: unknown;
+        data?: unknown;
+      } | null;
+      if (
+        !senderId ||
+        !value ||
+        !peerIdSchema.safeParse(value.to).success ||
+        !["request", "offer", "answer", "ice"].includes(String(value.kind)) ||
+        JSON.stringify(value).length > 12_000
+      )
+        return reply?.({ ok: false, error: "invalid signaling data" });
       const target = peers.get(value.to as string);
-      if (!target) return reply?.({ ok: false, error: 'peer offline' });
-      target.socket.emit('signal:receive', { from: senderId, kind: value.kind, data: value.data });
+      if (!target) return reply?.({ ok: false, error: "peer offline" });
+      target.socket.emit("signal:receive", {
+        from: senderId,
+        kind: value.kind,
+        data: value.data,
+      });
       console.log(`[signal] ${value.kind} ${senderId} -> ${value.to}`);
       reply?.({ ok: true });
     });
-    socket.on('group:create', (input: unknown, reply: Reply) => {
+    socket.on("group:create", (input: unknown, reply: Reply) => {
       const ownerId = peerFor(socket);
       const members = (input as { members?: unknown })?.members;
-      if (!ownerId || !Array.isArray(members) || members.length > 15 || !members.every(v => peerIdSchema.safeParse(v).success)) return reply?.({ ok: false, error: 'invalid members' });
-      const group: Group = { id: randomUUID(), ownerId, members: [...new Set([ownerId, ...members])], version: 1 };
+      if (
+        !ownerId ||
+        !Array.isArray(members) ||
+        members.length > 15 ||
+        !members.every((v) => peerIdSchema.safeParse(v).success)
+      )
+        return reply?.({ ok: false, error: "invalid members" });
+      const group: Group = {
+        id: randomUUID(),
+        ownerId,
+        members: [...new Set([ownerId, ...members])],
+        version: 1,
+      };
       groups.set(group.id, group);
-      group.members.forEach(id => peers.get(id)?.socket.emit('group:update', group));
-      console.log(`[signal] GROUP ${group.id} members=${group.members.join(',')}`);
+      group.members.forEach((id) =>
+        peers.get(id)?.socket.emit("group:update", group),
+      );
+      console.log(
+        `[signal] GROUP ${group.id} members=${group.members.join(",")}`,
+      );
       reply?.({ ok: true, group });
     });
-    socket.on('group:change', (input: unknown, reply: Reply) => {
+    socket.on("group:change", (input: unknown, reply: Reply) => {
       const actor = peerFor(socket);
-      const { groupId, memberId, action, version } = (input || {}) as Record<string, unknown>;
+      const { groupId, memberId, action, version } = (input || {}) as Record<
+        string,
+        unknown
+      >;
       const group = groups.get(String(groupId));
-      if (!actor || !group || !group.members.includes(actor) || group.version !== version || !peerIdSchema.safeParse(memberId).success || !['add','remove'].includes(String(action))) return reply?.({ ok: false, error: 'invalid group change or stale version' });
-      if (action === 'add' && actor !== group.ownerId) return reply?.({ ok: false, error: 'only owner can add member' });
-      if (action === 'remove' && actor !== group.ownerId && actor !== memberId) return reply?.({ ok: false, error: 'not allowed' });
+      if (
+        !actor ||
+        !group ||
+        !group.members.includes(actor) ||
+        group.version !== version ||
+        !peerIdSchema.safeParse(memberId).success ||
+        !["add", "remove"].includes(String(action))
+      )
+        return reply?.({
+          ok: false,
+          error: "invalid group change or stale version",
+        });
+      if (action === "add" && actor !== group.ownerId)
+        return reply?.({ ok: false, error: "only owner can add member" });
+      if (action === "remove" && actor !== group.ownerId && actor !== memberId)
+        return reply?.({ ok: false, error: "not allowed" });
       const before = [...group.members];
-      group.members = action === 'add' ? [...new Set([...group.members, String(memberId)])] : group.members.filter(id => id !== memberId);
+      group.members =
+        action === "add"
+          ? [...new Set([...group.members, String(memberId)])]
+          : group.members.filter((id) => id !== memberId);
       group.version++;
-      [...new Set([...before, ...group.members])].forEach(id => peers.get(id)?.socket.emit('group:update', group));
+      [...new Set([...before, ...group.members])].forEach((id) =>
+        peers.get(id)?.socket.emit("group:update", group),
+      );
       console.log(`[signal] GROUP_CHANGE ${group.id} v${group.version}`);
       reply?.({ ok: true, group });
     });
-    socket.on('disconnect', () => {
+    socket.on("disconnect", () => {
       const id = peerFor(socket);
-      if (id && peers.get(id)?.socket.id === socket.id) { peers.delete(id); console.log(`[signal] DISCONNECT ${id}`); publishPresence(); }
+      if (id && peers.get(id)?.socket.id === socket.id) {
+        peers.delete(id);
+        console.log(`[signal] DISCONNECT ${id}`);
+        publishPresence();
+      }
     });
   });
   const timer = setInterval(() => {
-    for (const [id, peer] of peers) if (Date.now() - peer.lastSeen > 30_000) {
-      peers.delete(id); peer.socket.disconnect(true); console.log(`[signal] TIMEOUT ${id}`); publishPresence();
-    }
+    for (const [id, peer] of peers)
+      if (Date.now() - peer.lastSeen > 30_000) {
+        peers.delete(id);
+        peer.socket.disconnect(true);
+        console.log(`[signal] TIMEOUT ${id}`);
+        publishPresence();
+      }
   }, 5_000);
   timer.unref();
-  return { app, io, peers, groups, httpServer, close: async () => { clearInterval(timer); await new Promise<void>(resolve => io.close(() => resolve())); await new Promise<void>(resolve => httpServer.close(() => resolve())); } };
+  return {
+    app,
+    io,
+    peers,
+    groups,
+    httpServer,
+    close: async () => {
+      clearInterval(timer);
+      await new Promise<void>((resolve) => io.close(() => resolve()));
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    },
+  };
 }
-if (process.argv[1]?.endsWith('index.ts')) {
+if (process.argv[1]?.endsWith("index.ts")) {
   const server = createSignaling();
-  server.httpServer.listen(Number(process.env.SIGNAL_PORT || 4001), '0.0.0.0', () => console.log('[signal] listening'));
+  server.httpServer.listen(
+    Number(process.env.SIGNAL_PORT || 4001),
+    "0.0.0.0",
+    () => console.log("[signal] listening"),
+  );
 }

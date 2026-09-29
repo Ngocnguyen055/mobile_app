@@ -1,2 +1,2 @@
-import { defineConfig } from 'vite';
-export default defineConfig({ envDir: '../..' });
+import { defineConfig } from "vite";
+export default defineConfig({ envDir: "../.." });

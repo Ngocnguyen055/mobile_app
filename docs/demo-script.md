@@ -24,11 +24,11 @@
 
 ## Phiếu bằng chứng
 
-| Mục | File do nhóm bổ sung | Kết quả thật |
-|---|---|---|
-| DIRECT Android, không relay FORWARD | `docs/evidence/direct-android.*` | Chưa có |
-| RELAY hai mạng, có FORWARD | `docs/evidence/relay-two-networks.*` | Chưa có |
-| Ba peer/nhóm/ACK | `docs/evidence/three-peers.*` | Chưa có |
-| SQLite sau restart | `docs/evidence/sqlite-restore.*` | Chưa có |
-| Google Calendar trước/sau, không trùng | `docs/evidence/google-sync.*` | Chưa có |
-| Benchmark đầu ra thực | `docs/evidence/benchmark.txt` | Có, localhost 100 tin; cần đo thêm hai mạng |
+| Mục                                    | File do nhóm bổ sung                 | Kết quả thật                                |
+| -------------------------------------- | ------------------------------------ | ------------------------------------------- |
+| DIRECT Android, không relay FORWARD    | `docs/evidence/direct-android.*`     | Chưa có                                     |
+| RELAY hai mạng, có FORWARD             | `docs/evidence/relay-two-networks.*` | Chưa có                                     |
+| Ba peer/nhóm/ACK                       | `docs/evidence/three-peers.*`        | Chưa có                                     |
+| SQLite sau restart                     | `docs/evidence/sqlite-restore.*`     | Chưa có                                     |
+| Google Calendar trước/sau, không trùng | `docs/evidence/google-sync.*`        | Chưa có                                     |
+| Benchmark đầu ra thực                  | `docs/evidence/benchmark.txt`        | Có, localhost 100 tin; cần đo thêm hai mạng |

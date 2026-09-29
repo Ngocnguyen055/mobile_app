@@ -1,5 +1,5 @@
-import { config as loadEnv } from 'dotenv';
-import app from './app.json';
+import { config as loadEnv } from "dotenv";
+import app from "./app.json";
 
-loadEnv({ path: '../../.env' });
+loadEnv({ path: "../../.env" });
 export default app.expo;

@@ -1,4 +1,4 @@
-import 'react-native-get-random-values';
-import { registerRootComponent } from 'expo';
-import App from './App.tsx';
+import "react-native-get-random-values";
+import { registerRootComponent } from "expo";
+import App from "./App.tsx";
 registerRootComponent(App);

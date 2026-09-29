@@ -15,10 +15,17 @@ Peer gửi trước gọi `ensureDirect`. ID thấp hơn tạo offer; ID cao hơ
 
 ```json
 {
-  "messageId": "UUID v4", "sessionId": "UUID v4", "senderId": "peer-a",
-  "receiverId": "peer-b", "groupId": "UUID v4 nếu chat nhóm",
-  "type": "text", "timestamp": 1760000000000, "body": "Xin chào",
-  "mode": "DIRECT", "attempt": 1, "sequence": 1
+  "messageId": "UUID v4",
+  "sessionId": "UUID v4",
+  "senderId": "peer-a",
+  "receiverId": "peer-b",
+  "groupId": "UUID v4 nếu chat nhóm",
+  "type": "text",
+  "timestamp": 1760000000000,
+  "body": "Xin chào",
+  "mode": "DIRECT",
+  "attempt": 1,
+  "sequence": 1
 }
 ```
 

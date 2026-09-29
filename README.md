@@ -110,11 +110,11 @@ Lệnh seed ghi trực tiếp vào database được chỉ ra bởi `MONGO_URL` 
 
 Seed thành công sẽ in ba tài khoản:
 
-| Email | Mật khẩu |
-|---|---|
-| `an@example.test` | `StudentDemo123!` |
+| Email               | Mật khẩu          |
+| ------------------- | ----------------- |
+| `an@example.test`   | `StudentDemo123!` |
 | `binh@example.test` | `StudentDemo123!` |
-| `chi@example.test` | `StudentDemo123!` |
+| `chi@example.test`  | `StudentDemo123!` |
 
 Chỉ dùng các tài khoản và mật khẩu mẫu trong môi trường học tập/phát triển.
 
@@ -175,13 +175,13 @@ Invoke-RestMethod http://localhost:4002/health
 npm.cmd run dev:web
 ```
 
-| Thành phần | Địa chỉ local |
-|---|---|
-| API | `http://localhost:4000` |
-| Signaling | `http://localhost:4001` |
-| Relay | `http://localhost:4002` |
-| Web peer | `http://localhost:5173` |
-| Metro | `http://localhost:8081` |
+| Thành phần | Địa chỉ local           |
+| ---------- | ----------------------- |
+| API        | `http://localhost:4000` |
+| Signaling  | `http://localhost:4001` |
+| Relay      | `http://localhost:4002` |
+| Web peer   | `http://localhost:5173` |
+| Metro      | `http://localhost:8081` |
 
 Mở ba cửa sổ hoặc profile trình duyệt riêng và đăng ký `peer-a`, `peer-b`, `peer-c` để chạy demo web. Mỗi profile giữ secret Peer ID riêng trong localStorage.
 

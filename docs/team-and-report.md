@@ -1,10 +1,10 @@
 # Phân công nhóm ba người
 
-| Thành viên | Trách nhiệm chính | Phần giao và kiểm chứng chéo |
-|---|---|---|
-| Sinh viên 1 (trưởng nhóm) | Giao thức chung, signaling, relay, tích hợp PeerClient | Review Android chat, test DIRECT và log hai mạng |
-| Sinh viên 2 | Android Expo, SQLite, notification, Google Calendar | Test API, demo task/lịch, bằng chứng OAuth thật |
-| Sinh viên 3 | REST API MongoDB, web peer, deploy/docs/test | Test ACL, đồng thời/version, benchmark và tài liệu triển khai |
+| Thành viên                | Trách nhiệm chính                                      | Phần giao và kiểm chứng chéo                                  |
+| ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
+| Sinh viên 1 (trưởng nhóm) | Giao thức chung, signaling, relay, tích hợp PeerClient | Review Android chat, test DIRECT và log hai mạng              |
+| Sinh viên 2               | Android Expo, SQLite, notification, Google Calendar    | Test API, demo task/lịch, bằng chứng OAuth thật               |
+| Sinh viên 3               | REST API MongoDB, web peer, deploy/docs/test           | Test ACL, đồng thời/version, benchmark và tài liệu triển khai |
 
 Tất cả thành viên cùng chạy demo ba peer, ghi log thật và review PR của người khác. Điền tên/MSSV thật trước khi nộp.
 

@@ -1,1 +1,21 @@
-{"expo":{"name":"Student Planner DS01","slug":"student-planner-ds01","scheme":"studentplanner","version":"1.0.0","orientation":"portrait","newArchEnabled":false,"android":{"package":"edu.student.plannerds01","usesCleartextTraffic":true,"permissions":["POST_NOTIFICATIONS"]},"plugins":["expo-dev-client","expo-notifications","@config-plugins/react-native-webrtc","@react-native-google-signin/google-signin"]}}
+{
+  "expo": {
+    "name": "Student Planner DS01",
+    "slug": "student-planner-ds01",
+    "scheme": "studentplanner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": false,
+    "android": {
+      "package": "edu.student.plannerds01",
+      "usesCleartextTraffic": true,
+      "permissions": ["POST_NOTIFICATIONS"]
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-notifications",
+      "@config-plugins/react-native-webrtc",
+      "@react-native-google-signin/google-signin"
+    ]
+  }
+}
