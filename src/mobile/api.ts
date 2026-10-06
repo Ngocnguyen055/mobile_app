@@ -2,6 +2,11 @@ import * as SecureStore from "expo-secure-store";
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:4000";
 let token = "";
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly path: string) {
+    super(message);
+  }
+}
 export async function restoreToken() {
   token = (await SecureStore.getItemAsync("api-token")) || "";
   return token;
@@ -30,10 +35,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     ? await response.json()
     : await response.text();
   if (!response.ok)
-    throw new Error(
+    throw new ApiError(
       typeof result?.error === "string"
         ? result.error
         : `HTTP ${response.status}: ${JSON.stringify(result)}`,
+      response.status,
+      path,
     );
   return result as T;
 }
@@ -41,7 +48,8 @@ export const json = (method: string, data?: unknown): RequestInit => ({
   method,
   body: data === undefined ? undefined : JSON.stringify(data),
 });
-export type User = { _id: string; id?: string; name: string; email: string };
+export type ProjectRole = "OWNER" | "MEMBER" | "DIRECTOR" | "MANAGER" | "EMPLOYEE";
+export type User = { _id: string; id?: string; name: string; email: string; role?: ProjectRole };
 export type ChatContact = { id: string; name: string; email: string };
 export async function loadChatContacts(): Promise<ChatContact[]> {
   return api<ChatContact[]>("/contacts");
@@ -58,6 +66,23 @@ export type Project = {
   plannedBudget: number;
   spentBudget: number;
   chatGroupId?: string;
+  kind: "independent" | "hierarchical";
+  parentProject: string | null;
+  rootProject: string;
+  children?: Project[];
+  childManagerIds?: string[];
+  myRole: ProjectRole;
+  version: number;
+  archived: boolean;
+  permissions: {
+    manageMembers: boolean;
+    manageTasks: boolean;
+    manageProject: boolean;
+    moderate: boolean;
+    manageResources: boolean;
+    createChildren: boolean;
+    appointManager: boolean;
+  };
 };
 export type Task = {
   _id: string;
@@ -88,6 +113,28 @@ export type Discussion = {
   body: string;
   author: User;
   createdAt: string;
+  hidden: boolean;
+  revision: number;
+  attachments: DocumentRow[];
+  commentCount: number;
+};
+export type DiscussionComment = {
+  _id: string;
+  body: string;
+  author: User;
+  revision: number;
+  createdAt: string;
+};
+export type InboxNotification = {
+  _id: string;
+  type: string;
+  title: string;
+  body: string;
+  project: ProjectSummary | null;
+  actor: User | null;
+  entityId?: string;
+  readAt: string | null;
+  createdAt: string;
 };
 export type DocumentRow = {
   _id: string;
@@ -100,5 +147,6 @@ export type Progress = {
   done: number;
   dueSoon: number;
   overdue: number;
-  byPerson: { userId: string; total: number; done: number }[];
+  byPerson: { userId: string; name?: string; total: number; done: number; tasks?: Task[] }[];
+  byProject?: { projectId: string; name: string; total: number; done: number; overdue: number }[];
 };

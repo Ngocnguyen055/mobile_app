@@ -1,7 +1,15 @@
 services:
   mongo:
     image: mongo:7
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports: ["127.0.0.1:27017:27017"]
     volumes: ["mongo-data:/data/db"]
+    # Host-run Node services connect to this single-node replica set.
+    # Transactions require a replica set; standalone MongoDB is insufficient.
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'try { if (rs.status().ok !== 1) quit(1); } catch (e) { rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"localhost:27017\"}]}); quit(1); }'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 volumes:
   mongo-data:

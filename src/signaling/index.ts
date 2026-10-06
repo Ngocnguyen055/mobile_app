@@ -11,6 +11,7 @@ import {
   type Group,
   type PeerDiscovery,
 } from "@ds01/shared";
+import { httpProjectDirectory, type ProjectDirectory } from "./projectDirectory.ts";
 
 loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 if (
@@ -36,7 +37,10 @@ type Reply = (response: {
 const HEARTBEAT_FRESH_MS = 30_000;
 const PEER_SECRET = process.env.PEER_SECRET || "local-development-only-secret";
 const JWT_SECRET = process.env.JWT_SECRET || "local-development-only-secret";
-export function createSignaling(httpServer: HttpServer = createServer()) {
+export function createSignaling(
+  httpServer: HttpServer = createServer(),
+  directory: ProjectDirectory = httpProjectDirectory(),
+) {
   const app = express();
   const peers = new Map<string, Peer>();
   const groups = new Map<string, Group>();
@@ -49,16 +53,34 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
   app.get("/health", (_req, res) =>
     res.json({ service: "signaling", peers: peers.size }),
   );
-  app.get("/internal/groups/:id", (req, res) => {
+  const publishGroup = (group: Group) => {
+    const before = groups.get(group.id);
+    if (before && before.version > group.version) return;
+    groups.set(group.id, group);
+    for (const id of new Set([...(before?.members || []), ...group.members]))
+      peers.get(id)?.socket.emit("group:update", group);
+  };
+  const currentGroup = async (id: string) => {
+    const cached = groups.get(id);
+    if (cached && !cached.projectId) return cached;
+    const current = await directory.group(id);
+    if (current) publishGroup(current);
+    return current;
+  };
+  app.get("/internal/groups/:id", async (req, res) => {
     if (req.header("x-peer-secret") !== PEER_SECRET) return res.sendStatus(403);
-    const group = groups.get(req.params.id);
-    return group ? res.json(group) : res.sendStatus(404);
+    try {
+      const group = await currentGroup(req.params.id);
+      return group ? res.json(group) : res.sendStatus(404);
+    } catch {
+      return res.status(503).json({ error: "project authorization unavailable" });
+    }
   });
   const publishPresence = () =>
     io.to("registered-peers").emit("presence", [...peers.keys()]);
   const peerFor = (socket: Socket) => socket.data.peerId as string | undefined;
   io.on("connection", (socket) => {
-    socket.on("peer:register", (input: unknown, reply: Reply) => {
+    socket.on("peer:register", async (input: unknown, reply: Reply) => {
       if (typeof reply !== "function") return;
       const { peerId: requestedId, identityProof } = (input || {}) as Record<
         string,
@@ -95,6 +117,13 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
       socket.data.peerId = peerId;
       peers.set(peerId, { socket, lastSeen: Date.now() });
       void socket.join("registered-peers");
+      if (/^[a-f\d]{24}$/i.test(peerId)) {
+        try {
+          for (const group of await directory.forPeer(peerId)) publishGroup(group);
+        } catch {
+          console.warn("[signal] project directory unavailable; project chat will fail closed");
+        }
+      }
       const token = jwt.sign({ sub: peerId }, PEER_SECRET, {
         expiresIn: "12h",
       });
@@ -112,6 +141,44 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
       const id = peerFor(socket);
       if (id && peers.get(id)?.socket.id === socket.id)
         peers.get(id)!.lastSeen = Date.now();
+    });
+    socket.on("project:group", async (input: unknown, reply: Reply) => {
+      if (typeof reply !== "function") return;
+      const actor = peerFor(socket);
+      if (!actor || peers.get(actor)?.socket.id !== socket.id)
+        return reply({ ok: false, error: "registration required" });
+      const id = (input as { projectId?: unknown } | null)?.projectId;
+      if (typeof id !== "string" || !/^[a-f\d]{24}$/i.test(id))
+        return reply({ ok: false, error: "invalid project ID" });
+      try {
+        const group = await directory.project(id);
+        if (!group || !group.members.includes(actor))
+          return reply({ ok: false, error: "project group access denied" });
+        publishGroup(group);
+        reply({ ok: true, group });
+      } catch {
+        reply({ ok: false, error: "project authorization unavailable" });
+      }
+    });
+    socket.on("group:authorize", async (input: unknown, reply: Reply) => {
+      if (typeof reply !== "function") return;
+      const actor = peerFor(socket);
+      if (!actor || peers.get(actor)?.socket.id !== socket.id)
+        return reply({ ok: false, error: "registration required" });
+      const value = input as { groupId?: unknown; otherPeerId?: unknown } | null;
+      if (!value || typeof value.groupId !== "string" ||
+        !/^[\da-f-]{36}$/i.test(value.groupId) ||
+        !peerIdSchema.safeParse(value.otherPeerId).success)
+        return reply({ ok: false, error: "invalid group authorization" });
+      try {
+        const group = await currentGroup(value.groupId);
+        if (!group || group.archived || !group.members.includes(actor) ||
+          !group.members.includes(String(value.otherPeerId)))
+          return reply({ ok: false, error: "group access denied or project archived" });
+        reply({ ok: true, group });
+      } catch {
+        reply({ ok: false, error: "project authorization unavailable" });
+      }
     });
     socket.on("peer:list", (reply: Reply) => {
       if (typeof reply !== "function") return;
@@ -225,6 +292,8 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
         unknown
       >;
       const group = groups.get(String(groupId));
+      if (group?.projectId)
+        return reply?.({ ok: false, error: "manage project members through REST API" });
       if (
         !actor ||
         !group ||
@@ -272,6 +341,25 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
       }
   }, 5_000);
   timer.unref();
+  let synchronizing = false;
+  const projectTimer = setInterval(async () => {
+    if (synchronizing) return;
+    synchronizing = true;
+    try {
+      const accountIds = [...peers.keys()].filter((id) => /^[a-f\d]{24}$/i.test(id));
+      for (const peerId of accountIds)
+        for (const group of await directory.forPeer(peerId)) publishGroup(group);
+      for (const group of [...groups.values()].filter((g) => g.projectId)) {
+        const latest = await directory.group(group.id);
+        if (latest) publishGroup(latest);
+      }
+    } catch {
+      // Authorization always queries current state and fails closed if API is down.
+    } finally {
+      synchronizing = false;
+    }
+  }, 2000);
+  projectTimer.unref();
   return {
     app,
     io,
@@ -280,6 +368,7 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
     httpServer,
     close: async () => {
       clearInterval(timer);
+      clearInterval(projectTimer);
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     },

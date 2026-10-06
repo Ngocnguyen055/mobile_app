@@ -3,6 +3,9 @@ import type { AddressInfo } from "node:net";
 import jwt from "jsonwebtoken";
 import { createApi } from "../src/api/index.ts";
 import { Project, Task } from "../src/api/models.ts";
+import * as projectAccess from "../src/api/projectAccess.ts";
+import * as notifications from "../src/api/notifications.ts";
+import type { ClientSession } from "mongoose";
 
 const userId = "000000000000000000000001";
 const projectId = "000000000000000000000002";
@@ -83,14 +86,17 @@ describe("task time window API", () => {
   });
 
   it("validates a partial patch against stored dates and keeps optimistic versioning", async () => {
-    vi.spyOn(Project, "findOne").mockResolvedValue({
-      id: projectId,
-      members: [userId],
-    } as never);
-    const find = vi.spyOn(Task, "findOne").mockResolvedValue({
+    const session = { transaction: true } as unknown as ClientSession;
+    const project = new Project({ _id: projectId, name: "Project", owner: userId, members: [userId] });
+    vi.spyOn(projectAccess, "withWritableProject").mockImplementation(async (_id, _user, action) => action({
+      project, root: project, role: "OWNER", archived: false,
+      permissions: projectAccess.permissionsForProject("independent", false, "OWNER"),
+    }, session));
+    vi.spyOn(notifications, "emitNotification").mockResolvedValue(undefined);
+    const find = vi.spyOn(Task, "findOne").mockReturnValue({ session: () => Promise.resolve({
       startsAt: new Date("2026-10-01T08:00:00.000Z"),
       dueAt: new Date("2026-10-01T10:00:00.000Z"),
-    } as never);
+    }) } as never);
     const update = vi.spyOn(Task, "findOneAndUpdate").mockResolvedValue({
       _id: taskId,
       project: projectId,
@@ -128,7 +134,7 @@ describe("task time window API", () => {
       expect(update).toHaveBeenCalledWith(
         { _id: taskId, project: projectId, version: 7 },
         { $set: { startsAt: null }, $inc: { version: 1 } },
-        { new: true },
+        { new: true, session },
       );
     });
   });

@@ -2,6 +2,37 @@
 
 Ghi kết quả thật vào `docs/evidence/` theo mẫu: ngày/giờ, commit, máy/Android OS, mạng, bước làm, expected, actual, log/ảnh, người thực hiện. Bảng này là kịch bản, không phải tuyên bố đã qua.
 
+## Bổ sung cho bản dự án phân cấp
+
+Lượt triển khai 07/10/2026: **65/65 test trong 17 file**, typecheck cả source/script, lint, web build và Android JavaScript export đạt. Đầu ra thật ở [evidence/hierarchy-2026-10-07.txt](evidence/hierarchy-2026-10-07.txt). Các test API mới dùng DB mock; test nhóm dùng HTTP/Socket.IO thật với directory mock. Đây không phải bằng chứng transaction chạy trên Atlas hay DIRECT WebRTC thật. `test:hierarchy-api` và migration chưa chạy trên Atlas vì lệnh bị cơ chế duyệt tự động chặn trước thực thi do hết quota.
+
+| ID | Nhóm | Kịch bản / kết quả cần đạt | Bằng chứng hiện có và bước còn lại |
+| --- | --- | --- | --- |
+| H1 | Chức năng | Chọn độc lập / phân cấp; tạo tổng và con, có role và UUID nhóm ổn định | Model/ACL test; tạo bằng API Mongo thật và UI còn cần chạy |
+| H2 | Chức năng | Director quản lý mọi con; manager chỉ quản lý con của mình; employee chỉ đọc con tham gia | `hierarchy-access`, `hierarchy-routes`; kiểm tra ba tài khoản trên Android |
+| H3 | Chức năng | Manager chỉ thêm root members; chỉ director bổ nhiệm người quản lý | Route tests; script Mongo thật đã chuẩn bị |
+| H4 | Chức năng | Tạo / sửa / xóa task theo quyền; employee chỉ đổi status task mình | `api-project-writes`, `api-task-window`; thao tác Android còn cần chạy |
+| H5 | Chức năng | Tiến độ đúng phạm vi, mở task từng người, đúng bốn ký hiệu/status Quá hạn | Helpers `mobile-hierarchy-policy`, `hierarchy-access`; biểu đồ/giờ thiết bị còn cần kiểm tra |
+| H6 | Chức năng | Tác giả sửa/xóa bài và bình luận; moderator ẩn/xóa nhưng không sửa nội dung người khác | `discussion`; kiểm tra tải lại và nhiều tài khoản trên Android |
+| H7 | Chức năng | Đăng bài kèm ảnh/tệp; tải đúng quyền; tệp cũ không mất sau bỏ tab Tài liệu | HTTP multipart test với DB mock; DocumentPicker/download thật còn cần chạy |
+| H8 | Chức năng | Xóa manager cần replacement; membership, task và chat cập nhật cùng nhau | Route test + project chat thu hồi Socket.IO; transaction Mongo thật còn cần chạy |
+| H9 | Chức năng | Archive tổng kéo theo con, chỉ đọc; restore chọn giữ/khôi phục con | Route/archive/chat tests; Android và Mongo thật còn cần chạy |
+| H10 | Chức năng | Inbox không actor, đúng scope bài/bình luận, deadline không trùng; đã đọc đúng user | `notifications`, `discussion`; deadline scanner thật và UI còn cần chạy |
+| C3 | Đồng thời | Hai request sửa cùng task.version: một 200, một 409 | Script `test:hierarchy-api` có hai request song song; **chưa chạy Mongo thật** |
+| C4 | Đồng thời | Hai request sửa cùng comment.revision: một 200, một 409 | Script `test:hierarchy-api` đã chuẩn bị; **chưa chạy Mongo thật** |
+| C5 | Đồng thời | Gửi tạo task / bình luận cùng lúc với archive hoặc remove: không có ghi được phép sau thao tác thu hồi commit | Test kiểm tra session/lock root+child; cần thử tải thật, lưu log thứ tự commit |
+| E3 | Lỗi / phục hồi | Dừng API kiểm tra nhóm: DIRECT/RELAY nhóm mới bị từ chối; khởi động lại và gửi tin mới | `project-chat` kiểm tra directory outage qua Socket.IO; thử process thật còn cần chạy |
+| E4 | Lỗi / phục hồi | Restart signaling; đăng ký lại giữ đúng UUID/membership nhóm dự án và lịch sử SQLite | Cần demo Android/Mongo thật; nhóm web demo RAM vẫn phải tạo lại |
+| S6 | Bảo mật | Nhân viên gọi API ngoài quyền, moving personal event vào project, đọc project khác | `api-project-writes`, `hierarchy-access`; script Mongo thật còn cần chạy |
+| S7 | Dữ liệu sai / bảo mật | Tệp >512 KiB, MIME sai; tệp bài ẩn, sender/receiver nhóm đã bị loại | `discussion`, `project-chat`; thử URI/file thật và client stale trên Android |
+| P2 | Hiệu năng | Đo 100 tin nhóm ba peer sau thêm kiểm tra quyền; ghi RTT/ACK p50,p95, lỗi và môi trường | Chưa đo bản nhóm dự án mới; benchmark cũ bên dưới chỉ chứng minh đường relay localhost cũ |
+
+Luồng demo phân cấp: An tạo tổng, thêm Bình/Chi; tạo con giao Bình quản lý, thêm Chi. Bình giao task; Chi đổi status của mình và thử sửa task người khác. Đăng bài kèm tệp, bình luận rồi dùng vai trò quản lý ẩn bài. Xem inbox cả ba tài khoản. An thử xóa Bình khi chưa có replacement, sau đó chọn Chi thay Bình; kiểm tra quyền, task bỏ phân công, Chat không nhận tin mới trên Bình và SQLite cũ vẫn còn. Archive/restore tổng, restart signaling và đối chiếu UUID nhóm. Kiểm tra drawer `☰` dọc và header cố định khi cuộn; ảnh ADB hàng tab cũ ngày 28/09 không chứng minh drawer mới.
+
+Chạy `npm.cmd run test:hierarchy-api` với database user có quyền tạo/xóa **database thử riêng** trên cluster. Script dọn database tạm nếu kết thúc bình thường hoặc lỗi trong try/finally; nếu tiến trình bị kill cứng, nhóm kiểm tra và xóa riêng database có tiền tố `student_planner_verify_`. Không dùng script để chứng minh notification Android, DIRECT thật hoặc Google OAuth.
+
+## Bộ kịch bản Mobile / DS01 ban đầu
+
 | ID  | Loại                | Bước thao tác                                                                                                                                                                                                          | Kết quả mong đợi                                                                                                                                                          | Tự động                                                                                             |
 | --- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | F1  | Chức năng           | Đăng ký An, đăng xuất, đăng nhập lại                                                                                                                                                                                   | Token hợp lệ; sau đăng nhập mở lịch tổng hợp của An mà không cần chọn dự án                                                                                               | Chưa, cần Mongo/Android                                                                             |

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import { User, Project, Task, Event, Discussion } from "../src/api/models.ts";
+import { User, Project, ProjectMember, Task, Event, Discussion } from "../src/api/models.ts";
 
 await mongoose.connect(
   process.env.MONGO_URL || "mongodb://127.0.0.1:27017/student_planner",
@@ -32,12 +32,20 @@ if (!project)
     name: "Bài tập lớn Mobile + DS01",
     description: "Dữ liệu mẫu cho ba sinh viên",
     owner: users[0].id,
+    kind: "independent",
     members: users.map((u) => u.id),
     plannedHours: 90,
     actualHours: 15,
     plannedBudget: 500000,
     spentBudget: 75000,
   });
+if (project.kind === "independent") {
+  for (const userId of project.members.map(String)) {
+    await ProjectMember.updateOne({ project: project._id, user: userId }, {
+      $set: { role: userId === String(project.owner) ? "OWNER" : "MEMBER" },
+    }, { upsert: true });
+  }
+}
 if (!(await Task.exists({ project: project.id }))) {
   const now = Date.now();
   await Task.create([

@@ -14,6 +14,7 @@ import {
 import type { CalendarEvent, Project, ProjectSummary, Task } from "./api.ts";
 import type { ReminderOffset } from "./local.ts";
 import NativeDateTimeField from "./NativeDateTimeField.tsx";
+import { effectiveTaskStatus, taskStatusLabels } from "./projectPolicy.ts";
 import {
   calendarCreatePermissions,
   calendarProjectId,
@@ -50,6 +51,9 @@ type Props = {
   projects: Project[];
   scope?: CalendarScope;
   fixedProjectId?: string;
+  readOnly?: boolean;
+  canManageTasks?: boolean;
+  canManageEvents?: boolean;
   initialEvent?: CalendarEvent | null;
   defaultReminderOffsets: ReminderOffset[];
   onSaveEvent: (
@@ -78,12 +82,6 @@ const projectNameOf = (
   if (typeof value !== "string") return value.name;
   return projects.find((project) => project._id === value)?.name || "Dự án";
 };
-const statusLabel: Record<Task["status"], string> = {
-  todo: "Chưa làm",
-  doing: "Đang làm",
-  done: "Hoàn thành",
-};
-
 function parsedDateOrUndefined(value: string) {
   try {
     return parseViDateTime(value);
@@ -135,6 +133,9 @@ export default function CalendarPanel({
   projects,
   scope = "all",
   fixedProjectId,
+  readOnly = false,
+  canManageTasks = true,
+  canManageEvents = true,
   initialEvent,
   defaultReminderOffsets,
   onSaveEvent,
@@ -208,7 +209,7 @@ export default function CalendarPanel({
   };
 
   const beginNew = () => {
-    if (!permissions.canCreateEvent) return;
+    if (readOnly || !permissions.canCreateEvent) return;
     const day = formatViDate(selectedDay);
     const start = parseViDateTime(`${day} 09:00`);
     const end = parseViDateTime(`${day} 10:00`);
@@ -226,6 +227,7 @@ export default function CalendarPanel({
   };
 
   const beginEdit = (event: CalendarEvent) => {
+    if (readOnly || !canManageEvents) return;
     setEditing(event);
     setTitle(event.title);
     setStartsAt(toViDateTimeInput(event.startsAt));
@@ -246,6 +248,7 @@ export default function CalendarPanel({
 
   const submit = async () => {
     try {
+      if (readOnly || !canManageEvents) throw new Error("Lịch dự án này chỉ được xem.");
       setEditorError("");
       let start = parseViDateTime(startsAt);
       let end = parseViDateTime(endsAt);
@@ -408,7 +411,7 @@ export default function CalendarPanel({
       </View>
 
       <Text style={styles.selectedTitle}>{formatViDate(selectedDay)}</Text>
-      {permissions.canCreateEvent && (
+      {!readOnly && permissions.canCreateEvent && (
         <View style={styles.wrap}>
           {actionButton("+ Thêm sự kiện", beginNew)}
         </View>
@@ -428,20 +431,20 @@ export default function CalendarPanel({
             </Text>
           </View>
           <Text style={styles.cardTitle}>{task.title}</Text>
+          {!!task.description && (
+            <Text style={styles.note}>{task.description}</Text>
+          )}
           <Text>
             Bắt đầu:{" "}
             {task.startsAt ? formatViDateTime(task.startsAt) : "Chưa đặt"}
           </Text>
           <Text>
             Kết thúc: {task.dueAt ? formatViDateTime(task.dueAt) : "Chưa đặt"} ·{" "}
-            {statusLabel[task.status]}
+            {taskStatusLabels[effectiveTaskStatus(task)]}
           </Text>
-          {!!task.description && (
-            <Text style={styles.note}>{task.description}</Text>
-          )}
           <View style={styles.wrap}>
-            {actionButton("Xem / sửa", () => onOpenTask(task), true)}
-            {!!fixedProjectId &&
+            {actionButton(readOnly || !canManageTasks ? "Xem" : "Xem / sửa", () => onOpenTask(task), true)}
+            {!!fixedProjectId && !readOnly && canManageTasks &&
               actionButton("Xóa", () => confirmDeleteTask(task), true)}
           </View>
         </View>
@@ -480,12 +483,12 @@ export default function CalendarPanel({
                 true,
                 !onOpenProjectEvent,
               )
-            ) : (
+            ) : !readOnly && canManageEvents ? (
               <>
                 {actionButton("Sửa", () => beginEdit(event), true)}
                 {actionButton("Xóa", () => confirmDeleteEvent(event), true)}
               </>
-            )}
+            ) : null}
           </View>
         </View>
       ))}

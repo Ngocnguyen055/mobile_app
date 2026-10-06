@@ -126,7 +126,7 @@ Người offline không có hàng đợi server để nhận lại tin. Tin khô
 4. Khi B offline, composer và nút Gửi bị khóa vì hệ thống không có hàng đợi offline. Nút `Làm mới trạng thái` query lại discovery; nút `DIRECT trước`/`Đang ép RELAY` phục vụ kiểm thử đường truyền.
 5. Event nhận được chỉ cập nhật hội thoại nếu là tin text không nhóm của đúng cặp A/B. Việc đổi liên hệ dùng request guard để response chậm của cuộc chat trước không ghi đè cuộc chat đang mở.
 
-Chat nhóm không dùng màn hình này: vào `Dự án` → chọn dự án → `Chat` để tạo/khôi phục nhóm và gọi `sendGroup`.
+Chat nhóm không dùng màn hình này: vào `Dự án` → chọn dự án → `☰ → Chat`. Nhóm được tạo cùng dự án và tự đồng bộ thành viên từ MongoDB, rồi gọi `sendGroup`; không tạo/khôi phục UUID nhóm thủ công. Xem [dự án phân cấp](hierarchical-projects.md).
 
 ## Kiểm tra
 

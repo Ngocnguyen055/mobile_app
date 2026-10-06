@@ -51,6 +51,9 @@ export type Group = {
   ownerId: string;
   members: string[];
   version: number;
+  /** Project groups are persisted in MongoDB; demo DS01 groups stay in memory. */
+  projectId?: string;
+  archived?: boolean;
 };
 export const MAX_WIRE_BYTES = 8192;
 export function parseMessage(input: unknown): ChatMessage {

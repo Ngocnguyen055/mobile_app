@@ -204,6 +204,26 @@ export class PeerClient {
       throw new Error(result.error || "group creation failed");
     return result.group;
   }
+  async syncProjectGroup(projectId: string): Promise<Group> {
+    if (!this.signal?.connected) throw new Error("signaling unavailable");
+    const result = await this.call(this.signal, "project:group", { projectId });
+    if (!result.ok || !result.group)
+      throw new Error(result.error || "project group access denied");
+    this.groups.set(result.group.id, result.group);
+    this.emit({ kind: "group", group: result.group });
+    return result.group;
+  }
+  private async authorizeGroup(groupId: string, otherPeerId: string) {
+    if (!this.signal?.connected) throw new Error("group authorization unavailable");
+    const result = await this.call(this.signal, "group:authorize", {
+      groupId, otherPeerId,
+    });
+    if (!result.ok || !result.group)
+      throw new Error(result.error || "group access denied");
+    this.groups.set(groupId, result.group);
+    if (result.group.archived) throw new Error("project archived");
+    return result.group;
+  }
   async changeGroup(
     groupId: string,
     memberId: string,
@@ -380,6 +400,10 @@ export class PeerClient {
     mode: DeliveryMode,
   ): Promise<void> {
     const packet = { ...message, mode };
+    // Control plane checks contain IDs only; chat content remains on DataChannel/relay.
+    // Recheck each retry/ACK, even when a DataChannel is already open.
+    if (packet.groupId)
+      await this.authorizeGroup(packet.groupId, packet.receiverId);
     if (mode === "DIRECT") {
       const channel = this.directs.get(packet.receiverId)?.channel;
       if (!channel || channel.readyState !== "open")
@@ -486,16 +510,20 @@ export class PeerClient {
     const group = this.groups.get(groupId);
     if (!group || !group.members.includes(this.peerId))
       throw new Error("not a group member");
+    const current = group.projectId
+      ? await this.syncProjectGroup(group.projectId)
+      : group;
+    if (current.archived) throw new Error("project archived");
     const messageId = randomUUID();
     const sequence = (this.sequence.get(groupId) || 0) + 1;
     this.sequence.set(groupId, sequence);
     const results = await Promise.allSettled(
-      group.members
+      current.members
         .filter((id) => id !== this.peerId)
         .map((id) => this.send(id, body, groupId, messageId, sequence)),
     );
     return Object.fromEntries(
-      group.members
+      current.members
         .filter((id) => id !== this.peerId)
         .map((id, index) => [id, results[index].status]),
     );
@@ -514,11 +542,8 @@ export class PeerClient {
       )
         throw new Error("wrong receiver, sender or mode");
       this.emit({ kind: "mode", peerId: message.senderId, mode });
-      if (
-        message.groupId &&
-        !this.groups.get(message.groupId)?.members.includes(message.senderId)
-      )
-        throw new Error("sender not in group");
+      if (message.groupId)
+        await this.authorizeGroup(message.groupId, message.senderId);
       if (message.type === "ack") {
         const pending = this.pending.get(
           `${message.ackFor}:${message.senderId}`,

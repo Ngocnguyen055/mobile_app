@@ -1,0 +1,101 @@
+Hierarchy implementation verification — 2026-10-07
+Workspace: C:\Projects\Mobile_App
+Outputs below are captured tool completion chunks, not invented demo logs.
+
+COMMAND: npm.cmd test -- --silent
+EXIT: 0
+(node:40624) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ tests/chat-storage.test.ts (3 tests) 133ms
+ ✓ tests/discussion.test.ts (7 tests) 490ms
+ ✓ tests/notifications.test.ts (4 tests) 141ms
+ ✓ tests/calendar.test.ts (5 tests) 21ms
+ ✓ tests/protocol.test.ts (2 tests) 11ms
+ ✓ tests/api-contacts.test.ts (3 tests) 236ms
+ ✓ tests/services.test.ts (4 tests) 1010ms
+   ✓ signaling and relay integration > looks up fresh peers, refreshes heartbeat, and reports disconnects without leaking connection internals  323ms
+   ✓ signaling and relay integration > forwards only to target, rejects sender spoof/oversize/group outsider, and detects disconnect  363ms
+ ✓ tests/api-task-window.test.ts (3 tests) 563ms
+   ✓ task time window API > rejects an invalid create window before writing a task  377ms
+ ✓ tests/api-project-writes.test.ts (3 tests) 621ms
+   ✓ project writes from employees > blocks moving a personal event into a project before saving  359ms
+ ✓ tests/hierarchy-routes.test.ts (6 tests) 787ms
+   ✓ project hierarchy mutations > manager cannot add someone outside root membership  312ms
+ ✓ tests/project-chat.test.ts (2 tests) 1293ms
+   ✓ persistent project chat authorization > discovers automatic groups, preserves old history after removal, and blocks new relay/direct input and archived writes  1251ms
+ ✓ tests/hierarchy-access.test.ts (10 tests) 34ms
+ ✓ tests/api-auth.test.ts (1 test) 256ms
+ ✓ tests/calendar-policy.test.ts (4 tests) 8ms
+ ✓ tests/mobile-hierarchy-policy.test.ts (3 tests) 6ms
+ ✓ tests/direct-chat-policy.test.ts (2 tests) 6ms
+ ✓ tests/peer.test.ts (3 tests) 2337ms
+   ✓ peer delivery across real Socket.IO processes > keeps personal histories separate from group fan-out, restores them, and reports an offline recipient  1234ms
+   ✓ peer delivery across real Socket.IO processes > times out a simulated dead DataChannel, falls back to RELAY, gets receiver ACK, and deduplicates  787ms
+   ✓ peer delivery across real Socket.IO processes > tracks group ACK separately for two recipients  313ms
+
+ Test Files  17 passed (17)
+      Tests  65 passed (65)
+   Start at  01:25:02
+   Duration  6.48s (transform 8.08s, setup 0ms, collect 29.74s, tests 7.96s, environment 5ms, prepare 4.75s)
+
+
+COMMAND: npm.cmd run build -w @ds01/web-peer
+EXIT: 0
+transforming...
+✓ 74 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.40 kB │ gzip:   0.27 kB
+dist/assets/index-CaNmeK7p.css    1.18 kB │ gzip:   0.59 kB
+dist/assets/index-C9elVOZs.js   337.53 kB │ gzip: 100.40 kB
+✓ built in 5.92s
+
+COMMAND: npm.cmd run export -w @ds01/mobile
+EXIT: 0
+Starting Metro Bundler
+Android src\mobile\index.ts ░░░░░░░░░░░░░░░░  1.0% (1/4)
+| (node:40188) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:40072) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:40796) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:38356) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:40860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:15924) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:40132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:39984) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+Android src\mobile\index.ts ▓▓▓▓▓▓░░░░░░░░░░ 39.8% (202/320)
+ WARN  Attempted to import the module "C:\Projects\Mobile_App\node_modules\react-native-webrtc\node_modules\event-target-shim\index" which is not listed in the "exports" of "C:\Projects\Mobile_App\node_modules\react-native-webrtc\node_modules\event-target-shim" under the requested subpath "./index". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+Android src\mobile\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.0% (545/613)
+Android src\mobile\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (859/859)
+Android Bundled 14385ms src\mobile\index.ts (859 modules)
+
+› android bundles (1):
+_expo/static/js/android/index-d8cc12b641c263ad90bd9dd9e7ea48a2.hbc (2.66 MB)
+
+› Files (1):
+metadata.json (150 B)
+
+Exported: dist
+
+COMMAND: npm.cmd run typecheck
+EXIT: 0
+Checked shared, api, signaling, relay, web-peer, mobile and scripts.
+COMMAND: npm.cmd run lint
+EXIT: 0
+No lint errors reported.
+
+Limitations:
+- New API/ACL tests use MongoDB mocks; project directory in Socket.IO integration is mocked.
+- The DIRECT receive revocation check invokes the handler with a simulated packet; it is not real WebRTC evidence.
+- Android export bundles JavaScript; new hierarchical UI was not exercised on Android.
+- An Atlas hierarchy verification attempt was blocked before execution by automatic approval review (usage limit). No result from Atlas is claimed.
+- Migration --apply was not executed against the configured database.
+- Real DIRECT, two-network RELAY, Android notification and Google OAuth remain pending.
+

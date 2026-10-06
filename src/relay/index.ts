@@ -71,6 +71,7 @@ export function createRelay(
           const group = await lookup(msg.groupId);
           if (
             !group ||
+            group.archived ||
             !group.members.includes(peerId) ||
             !group.members.includes(msg.receiverId)
           )
