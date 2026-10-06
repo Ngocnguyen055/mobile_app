@@ -4,15 +4,15 @@ Monorepo TypeScript cho bài tập lớn nhóm ba sinh viên: ứng dụng Andro
 
 ## Trạng thái kiểm chứng
 
-- Đã chạy trên máy phát triển: `npm run typecheck`, `npm run lint`, `npm test` (18 test trong 7 file), `npm run build -w @ds01/web-peer`, `expo install --check`, `expo prebuild --platform android --no-install` và `expo export --platform android`. Riêng `tests/calendar-policy.test.ts` có 4 ca kiểm tra phạm vi lịch, quyền tạo và điều hướng dự án.
+- Đã chạy trên máy phát triển: `npm run typecheck`, `npm run lint`, `npm test` (30 test trong 10 file), `npm run build -w @ds01/web-peer`, `expo install --check`, `expo prebuild --platform android --no-install`, `expo export --platform android` và native build `expo run:android --no-bundler`. Bộ test kiểm tra thêm danh bạ chat 1:1, discovery theo Peer ID, schema `groupId` rỗng, SQLite migration/query thật, lịch sử localStorage sau khi mở lại và chính sách lọc/trạng thái/ô gửi của màn hình chat riêng.
 - Benchmark relay localhost 100 tin tuần tự: p50 0,545 ms, p95 1,023 ms; đầu ra thật ở `docs/evidence/benchmark.txt`. Chưa đo trên Internet.
-- Test tự động kiểm tra discovery ba peer, nhóm có sửa gần đồng thời, relay định tuyến và từ chối sender giả, fallback từ **DataChannel giả lập không mở** sang relay, ACK và chống trùng. `npm run test:calendar-api` đã chạy thật với MongoDB Atlas cho lịch tổng hợp, CRUD, ACL hai user, quyền chuyển event cá nhân/dự án, dữ liệu sai và dọn sự kiện tạm. Chưa kiểm chứng toàn bộ API ngoài phạm vi script này, DIRECT WebRTC thực, notification Android, Google OAuth hay đồng bộ Google Calendar với tài khoản thật.
-- Development build đã chạy sau đăng nhập trên Android emulator. Ngày 28/09/2026, ADB đã xác nhận ba phạm vi lịch, chính sách nút tạo, điều hướng `Xem / sửa`, lịch dự án không có nút tạo và hai thanh công cụ cố định khi cuộn; ảnh thật nằm trong `docs/evidence/`. Việc phát, cập nhật và hủy notification vẫn cần nhóm kiểm tra riêng theo `docs/test-plan.md`.
+- Test tự động kiểm tra discovery ba peer, nhóm có sửa gần đồng thời, relay định tuyến và từ chối sender giả, fallback từ **DataChannel giả lập không mở** sang relay, ACK, chống trùng và tách lịch sử chat nhóm/1:1. `npm run test:calendar-api` đã chạy thật với MongoDB Atlas cho lịch; `npm run test:contacts-api` đã đọc MongoDB đang cấu hình và xác nhận JWT, phạm vi cùng dự án, loại bản thân/trùng và không lộ trường riêng. Chưa kiểm chứng toàn bộ API ngoài phạm vi hai script này, DIRECT WebRTC thực, notification Android, Google OAuth hay đồng bộ Google Calendar với tài khoản thật.
+- Development build đã chạy sau đăng nhập trên Android emulator. Ngày 28/09/2026, ADB đã xác nhận ba phạm vi lịch, chính sách nút tạo, điều hướng `Xem / sửa`, lịch dự án không có nút tạo và hai thanh công cụ cố định khi cuộn. Ngày 05/10/2026, native build được cài lại lên Pixel 7; ADB xác nhận tab `Tin nhắn`, danh bạ cùng dự án và màn hình hội thoại offline khóa ô gửi đúng chính sách. Ảnh thật nằm trong `docs/evidence/`. Việc gửi 1:1 giữa hai peer online, DIRECT/RELAY thật và notification vẫn cần nhóm kiểm tra theo `docs/test-plan.md`.
 - Khi chạy demo thật, lưu log và ảnh vào `docs/evidence/` theo `docs/demo-script.md`. Không có ảnh hoặc số đo thực tế nào được dựng sẵn.
 
 ## Yêu cầu trước khi clone
 
-- Git, Node.js `>=20.19.4` và npm. Repository hiện đã được kiểm tra với Node.js 24.14.0.
+- Git, Node.js `>=22.13.0` và npm. Repository hiện đã được kiểm tra với Node.js 24.14.0; bộ test SQLite dùng module `node:sqlite` nên không chạy trên Node 20.
 - MongoDB Atlas hoặc MongoDB cục bộ. Docker chỉ là lựa chọn phụ để chạy MongoDB cục bộ.
 - Android Studio có Android SDK Platform 36, Build Tools 36.0.0, Platform Tools, Emulator, Command-line Tools và một thiết bị trong Device Manager.
 - JDK đi kèm Android Studio. Trên Windows, đường dẫn mặc định thường là `C:\Program Files\Android\Android Studio\jbr`.
@@ -252,7 +252,7 @@ Sau khi đăng nhập hoặc khôi phục phiên, app mở **Lịch của tôi**
 - sự kiện cá nhân do người dùng tạo;
 - sự kiện của các dự án mà người dùng là thành viên.
 
-Thanh điều hướng dưới cùng mở `Lịch`, `Dự án` và `Cá nhân`; mỗi dự án vẫn có tab lịch riêng. Lịch dùng múi giờ `Asia/Ho_Chi_Minh`, định dạng `dd/MM/yyyy`, tuần bắt đầu từ thứ Hai và có tiêu đề `T2, T3, T4, T5, T6, T7, CN`. Người dùng có thể chuyển ngày/tuần/tháng và lọc bằng đúng ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`. Phạm vi `Dự án` gộp nội dung của mọi dự án người dùng được phép xem, thay vì tạo một nút lọc cho từng dự án.
+Thanh điều hướng dưới cùng mở `Lịch`, `Dự án`, `Tin nhắn` và `Cá nhân`; mỗi dự án vẫn có tab lịch riêng. Lịch dùng múi giờ `Asia/Ho_Chi_Minh`, định dạng `dd/MM/yyyy`, tuần bắt đầu từ thứ Hai và có tiêu đề `T2, T3, T4, T5, T6, T7, CN`. Người dùng có thể chuyển ngày/tuần/tháng và lọc bằng đúng ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`. Phạm vi `Dự án` gộp nội dung của mọi dự án người dùng được phép xem, thay vì tạo một nút lọc cho từng dự án.
 
 Trên lịch chính, `Tất cả` và `Cá nhân` chỉ cung cấp `+ Thêm sự kiện`; không có thao tác tạo task tại đây. Phạm vi `Dự án` không cung cấp nút thêm sự kiện hoặc task. Task và sự kiện gắn dự án hiển thị `Xem / sửa`; thao tác này mở đúng dự án và tab phù hợp trước khi cho phép chỉnh sửa. Tab `Lịch` bên trong một dự án cũng không có nút tạo sự kiện hoặc task; task được tạo trong tab `Task`, còn mục đã có vẫn được xem hoặc chỉnh sửa trong ngữ cảnh dự án.
 
@@ -268,11 +268,14 @@ Thông báo được lên lịch cục bộ trên Android. Khi thời gian hoặ
 
 ## Lệnh kiểm tra
 
+Chat cá nhân 1–1 dùng API `GET /contacts`, `PeerClient.lookupPeer`, `sendDirect`, `DirectChatService`, cùng `putDirect`/`listDirect` trong SQLite và localStorage. Trên Android, mở tab `Tin nhắn`, chọn một thành viên cùng dự án, rồi gửi khi người đó online. Màn hình hiển thị trạng thái ACK, nhãn `DIRECT`/`RELAY`, lịch sử cục bộ và khóa ô gửi khi peer offline; hệ thống không xếp hàng giao tin offline. Danh bạ không có chức năng kết bạn. Xem [cách gọi service, query lịch sử và giới hạn](docs/direct-chat.md). Chat nhóm trong tab `Chat` của dự án vẫn dùng `sendGroup` và không bị trộn vào hội thoại 1:1.
+
 ```powershell
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd test
 npm.cmd run test:calendar-api
+npm.cmd run test:contacts-api
 npm.cmd run build -w @ds01/web-peer
 Push-Location src/mobile
 npx.cmd expo install --check
@@ -280,7 +283,7 @@ Pop-Location
 npx.cmd tsx scripts/benchmark-relay.ts
 ```
 
-`test:calendar-api` cần MongoDB đang chạy, `MONGO_URL` đúng và dữ liệu seed. `benchmark-relay.ts` cần signaling và relay đang chạy; script in p50/p95/max của 100 lần gửi, chỉ xem là bằng chứng nếu thực sự chạy và lưu đầu ra. `scripts/simulate-fault.ps1` chạy riêng test DataChannel cố tình không mở để tái hiện fallback. `docs/test-plan.md` có ca kiểm thử thủ công cho API, thiết bị, mạng và OAuth.
+`test:calendar-api` và `test:contacts-api` cần MongoDB đang chạy, `MONGO_URL` đúng và dữ liệu seed. Script contacts chỉ đọc dữ liệu, có thể chọn tài khoản kiểm thử qua `CONTACTS_TEST_EMAIL`/`CONTACTS_TEST_PASSWORD`. `benchmark-relay.ts` cần signaling và relay đang chạy; script in p50/p95/max của 100 lần gửi, chỉ xem là bằng chứng nếu thực sự chạy và lưu đầu ra. `scripts/simulate-fault.ps1` chạy riêng test DataChannel cố tình không mở để tái hiện fallback. `docs/test-plan.md` có ca kiểm thử thủ công cho API, thiết bị, mạng và OAuth.
 
 ## Cấu hình Google Calendar
 

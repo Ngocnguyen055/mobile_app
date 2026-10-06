@@ -42,6 +42,10 @@ export const json = (method: string, data?: unknown): RequestInit => ({
   body: data === undefined ? undefined : JSON.stringify(data),
 });
 export type User = { _id: string; id?: string; name: string; email: string };
+export type ChatContact = { id: string; name: string; email: string };
+export async function loadChatContacts(): Promise<ChatContact[]> {
+  return api<ChatContact[]>("/contacts");
+}
 export type ProjectSummary = { _id: string; name: string };
 export type Project = {
   _id: string;

@@ -2,9 +2,12 @@ import { io, type Socket } from "socket.io-client";
 import { randomUUID } from "./uuid.ts";
 import {
   parseMessage,
+  peerIdSchema,
+  peerDiscoverySchema,
   type ChatMessage,
   type DeliveryMode,
   type Group,
+  type PeerDiscovery,
 } from "./protocol.ts";
 
 export type MessageStatus =
@@ -19,6 +22,10 @@ export interface ChatStore {
   ): Promise<void>;
   has(messageId: string, senderId: string): Promise<boolean>;
   list(): Promise<StoredMessage[]>;
+}
+export interface DirectChatStore extends ChatStore {
+  putDirect(row: StoredMessage): Promise<void>;
+  listDirect(peerId: string): Promise<StoredMessage[]>;
 }
 type RTCFactory = new (config: RTCConfiguration) => RTCPeerConnection;
 type Event = {
@@ -37,6 +44,7 @@ type Ack = {
   peers?: string[];
   groups?: Group[];
   group?: Group;
+  peer?: PeerDiscovery;
 };
 type Pending = { resolve: () => void; timer: ReturnType<typeof setTimeout> };
 type Direct = {
@@ -89,6 +97,15 @@ export class PeerClient {
   }
   getGroups() {
     return [...this.groups.values()];
+  }
+  async lookupPeer(peerId: string): Promise<PeerDiscovery> {
+    peerIdSchema.parse(peerId);
+    if (!this.signal?.connected) throw new Error("signaling unavailable");
+    const result = await this.call(this.signal, "peer:lookup", { peerId });
+    if (!result.ok) throw new Error(result.error || "peer lookup failed");
+    const peer = peerDiscoverySchema.parse(result.peer);
+    if (peer.peerId !== peerId) throw new Error("peer lookup identity mismatch");
+    return peer;
   }
   private async call(
     socket: Socket,
@@ -379,7 +396,7 @@ export class PeerClient {
   async send(
     receiverId: string,
     body: string,
-    groupId?: string,
+    groupId?: string | null,
     messageId = randomUUID(),
     sequenceOverride?: number,
   ): Promise<void> {
@@ -455,6 +472,12 @@ export class PeerClient {
       message: { message: { ...message, mode }, status: "failed" },
     });
     throw new Error(`delivery failed to ${receiverId}`);
+  }
+  /** Personal conversation; DIRECT is attempted first, with RELAY fallback. */
+  async sendDirect(receiverId: string, body: string): Promise<void> {
+    peerIdSchema.parse(receiverId);
+    if (receiverId === this.peerId) throw new Error("cannot chat with yourself");
+    await this.send(receiverId, body);
   }
   async sendGroup(
     groupId: string,

@@ -1,6 +1,8 @@
 Các tệp trong thư mục này chỉ ghi bằng chứng thực sự đã thu được:
 
 - `test-run.txt`: kết quả test tự động và kiểm thử Calendar API trên Atlas.
+- `direct-chat-2026-10-05.txt`: kết quả thật của test/typecheck/lint/build cho chat 1:1, lần đọc `GET /contacts` trên MongoDB đang cấu hình và kiểm tra UI bằng ADB.
+- `mobile-direct-chat-2026-10-05.png`: màn hình hội thoại riêng trên Pixel 7 emulator với An đang offline; ảnh xác nhận UI và chính sách khóa gửi offline, không chứng minh gửi/ACK/DIRECT/RELAY với peer thứ hai.
 - `benchmark.txt`: phép đo relay localhost đã chạy.
 - `mobile-login-2026-09-27.png`: development build mới mở trên Android emulator tới màn hình đăng nhập. Ảnh này không chứng minh màn hình lịch sau đăng nhập hoặc notification.
 - `calendar-event-create-modal-2026-09-28.png`: modal tạo sự kiện gần toàn màn hình trên Android emulator.

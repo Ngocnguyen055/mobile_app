@@ -8,7 +8,7 @@ export const messageSchema = z
     sessionId: idSchema,
     senderId: peerIdSchema,
     receiverId: peerIdSchema,
-    groupId: idSchema.optional(),
+    groupId: idSchema.nullish(),
     type: z.enum(["text", "ack"]),
     timestamp: z.number().int().positive(),
     body: z.string().max(4000),
@@ -26,6 +26,26 @@ export const messageSchema = z
 export type ChatMessage = z.infer<typeof messageSchema>;
 export type DeliveryMode = ChatMessage["mode"];
 export type PeerPresence = { peerId: string; online: boolean };
+const peerConnectionSchema = z.object({
+  transport: z.literal("webrtc-datachannel"),
+  signaling: z.literal("socket.io"),
+  relay: z.literal("socket.io"),
+}).strict();
+export const peerDiscoverySchema = z.discriminatedUnion("online", [
+  z.object({
+    peerId: peerIdSchema,
+    online: z.literal(true),
+    lastSeen: z.number().int().nonnegative(),
+    connection: peerConnectionSchema,
+  }).strict(),
+  z.object({
+    peerId: peerIdSchema,
+    online: z.literal(false),
+    lastSeen: z.null(),
+    connection: z.null(),
+  }).strict(),
+]);
+export type PeerDiscovery = z.infer<typeof peerDiscoverySchema>;
 export type Group = {
   id: string;
   ownerId: string;

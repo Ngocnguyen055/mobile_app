@@ -1,0 +1,47 @@
+Direct Chat service verification — 2026-10-05
+Environment: Windows, Node.js v24.14.0
+
+Command: npm.cmd test -- --silent
+Result: 10 test files passed, 30 tests passed.
+Relevant coverage:
+- GET /contacts authentication, project-scoped directory, unique public response fields
+- peer:lookup online/offline, heartbeat timeout, invalid requests and anonymous peer-list/presence rejection over real Socket.IO
+- groupId omitted/null protocol compatibility while group UUID validation remains active
+- real in-memory SQLite migration, group_id backfill and two-way direct-history query
+- localStorage reopen and separation of direct text, group messages and ACK messages
+- personal and group messages sent together through the existing peer engine, ACK/status isolation and offline failure
+- mobile conversation policy: exact A/B filtering, deterministic order, status labels and composer validation
+
+Command: npm.cmd run test:contacts-api
+Result: passed against the configured MongoDB and seeded account.
+Observed: 2 contacts; JWT required; results matched the union of shared-project members; requester, duplicates and private fields were absent.
+Database effect: read-only; the script did not create, update or delete records.
+
+Command: npm.cmd run typecheck
+Result: passed for shared, api, signaling, relay, web-peer and mobile workspaces.
+
+Command: npm.cmd run lint
+Result: passed.
+
+Command: npm.cmd run build -w @ds01/web-peer
+Result: production build passed; 74 modules transformed.
+
+Command: npx.cmd expo export --platform android --output-dir C:\Projects\Mobile_App\dist\android-export-check
+Result: Android JavaScript bundle passed; 855 modules, one 2.61 MB Hermes bundle.
+Known build warning: react-native-webrtc imports an event-target-shim subpath not declared in that dependency's exports and Metro falls back to file resolution.
+
+Command: npx.cmd expo run:android --no-bundler (from src/mobile)
+Result: native Android build passed in 1m 6s; 356 Gradle tasks; APK installed and the development-client URL opened on Pixel_7 emulator.
+Known native warnings: Gradle deprecated-feature notices and an Android SDK XML parser version notice; neither failed the build.
+
+ADB UI verification on Pixel_7 emulator:
+- bottom navigation exposed the Tin nhan tab;
+- GET /contacts displayed the two seeded contacts An and Chi;
+- opening An displayed the 1:1 conversation, Offline state, DIRECT-first control, empty local history and a disabled composer/send button;
+- refreshing after signaling reconnected returned the same valid offline state without an error banner.
+Screenshot: docs/evidence/mobile-direct-chat-2026-10-05.png.
+
+Limits of this evidence:
+- Peer tests use forced relay or a simulated DataChannel that never opens; they do not prove a real WebRTC DIRECT path.
+- The emulator check used one logged-in Android peer and offline contacts; it does not prove a message, recipient ACK or mode label from a second live peer.
+- No offline server queue exists; failed messages remain local and are not delivered after the recipient reconnects.

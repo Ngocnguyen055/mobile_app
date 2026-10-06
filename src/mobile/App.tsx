@@ -17,7 +17,9 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import {
+  DirectChatService,
   PeerClient,
+  isDirectMessageBetween,
   type PeerConfig,
   type Group,
   type StoredMessage,
@@ -27,10 +29,12 @@ import {
   api,
   getToken,
   json,
+  loadChatContacts,
   restoreToken,
   setToken,
   type CalendarEvent,
   type CalendarFeed,
+  type ChatContact,
   type Discussion,
   type DocumentRow,
   type Progress,
@@ -68,6 +72,11 @@ import {
   calendarProjectId,
   type CalendarScope,
 } from "./calendarPolicy.ts";
+import {
+  canSendDirect,
+  directMessageStatusLabel,
+  directMessagesForContact,
+} from "./directChatPolicy.ts";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -78,7 +87,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-type MainView = "calendar" | "projects" | "project" | "account";
+type MainView = "calendar" | "projects" | "project" | "messages" | "account";
 type ProjectTab =
   | "tasks"
   | "calendar"
@@ -210,9 +219,21 @@ export default function App() {
   const [modes, setModes] = useState<Record<string, string>>({});
   const [logs, setLogs] = useState<string[]>([]);
   const [forceRelay, setForceRelay] = useState(false);
+  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
+  const [chatContactsLoading, setChatContactsLoading] = useState(false);
+  const [directContact, setDirectContact] = useState<ChatContact | null>(null);
+  const [directMessages, setDirectMessages] = useState<StoredMessage[]>([]);
+  const [directMessageBody, setDirectMessageBody] = useState("");
+  const [directOpening, setDirectOpening] = useState(false);
+  const [directSending, setDirectSending] = useState(false);
+  const directSendingRef = useRef(false);
   const peer = useRef<PeerClient | null>(null);
   const peerConnect = useRef<Promise<void> | null>(null);
   const store = useRef<MobileStore | null>(null);
+  const directChat = useRef<DirectChatService | null>(null);
+  const directContactRef = useRef<ChatContact | null>(null);
+  const directOpenRequest = useRef(0);
+  const contentScroll = useRef<ScrollView | null>(null);
   const projectRef = useRef<Project | null>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -244,15 +265,22 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+    let active = true;
     void run(loadHome);
     void prepareNotifications();
-    void initializePeer(user).catch((caught) =>
-      setError(`Lịch sử chat: ${String(caught)}`),
-    );
+    void initializePeer(user, () => !active).catch((caught) => {
+      if (active) setError(`Lịch sử chat: ${String(caught)}`);
+    });
     return () => {
-      peer.current?.close();
+      active = false;
+      directOpenRequest.current += 1;
+      const currentPeer = peer.current;
       peer.current = null;
+      currentPeer?.close();
       peerConnect.current = null;
+      store.current = null;
+      directChat.current = null;
+      directContactRef.current = null;
     };
   }, [user?._id]);
 
@@ -366,11 +394,10 @@ export default function App() {
     await reconcileEventReminders(feed.events);
   };
 
-  const initializePeer = async (me: User) => {
+  const initializePeer = async (me: User, isCancelled: () => boolean) => {
     const id = me._id || me.id!;
     const local = new MobileStore(id);
     store.current = local;
-    setMessages(await local.list());
     const instance = new PeerClient({
       peerId: id,
       identityProof: getToken(),
@@ -379,6 +406,7 @@ export default function App() {
       rtc: RTCPeerConnection as unknown as PeerConfig["rtc"],
       store: local,
       onEvent: (event) => {
+        if (peer.current !== instance) return;
         if (event.kind === "presence") setOnline(event.peers || []);
         if (
           event.kind === "group" &&
@@ -387,12 +415,30 @@ export default function App() {
           setGroup(event.group?.members.includes(id) ? event.group : null);
         if (event.kind === "mode" && event.peerId)
           setModes((current) => ({ ...current, [event.peerId!]: event.mode! }));
-        if (event.kind === "message") void local.list().then(setMessages);
-        if (event.kind === "log")
+        if (event.kind === "message") {
+          void local.list().then(setMessages);
+          const selected = directContactRef.current;
+          if (
+            selected &&
+            event.message &&
+            isDirectMessageBetween(event.message.message, id, selected.id)
+          ) {
+            void local.listDirect(selected.id).then((rows) => {
+              if (directContactRef.current?.id === selected.id)
+                setDirectMessages(rows);
+            });
+          }
+        }
+        if (event.kind === "log") {
+          if (event.text === "signaling disconnected") setOnline([]);
           setLogs((current) => [event.text || "", ...current].slice(0, 100));
+        }
       },
     });
     peer.current = instance;
+    directChat.current = new DirectChatService(instance, local);
+    const history = await local.list();
+    if (!isCancelled() && peer.current === instance) setMessages(history);
   };
 
   const connectPeer = async () => {
@@ -402,6 +448,108 @@ export default function App() {
       throw caught;
     });
     await peerConnect.current;
+  };
+
+  const closeDirectConversation = () => {
+    directOpenRequest.current += 1;
+    directContactRef.current = null;
+    setDirectContact(null);
+    setDirectMessages([]);
+    setDirectMessageBody("");
+    setDirectOpening(false);
+  };
+
+  const loadDirectContacts = async () => {
+    setChatContactsLoading(true);
+    try {
+      const contacts = await loadChatContacts();
+      setChatContacts(contacts);
+      const selected = directContactRef.current;
+      if (selected && !contacts.some((contact) => contact.id === selected.id))
+        closeDirectConversation();
+      try {
+        await connectPeer();
+      } catch (caught) {
+        setOnline([]);
+        setError(
+          `Không kết nối được dịch vụ chat. Danh bạ và lịch sử cục bộ vẫn dùng được: ${caught instanceof Error ? caught.message : String(caught)}`,
+        );
+      }
+      return contacts;
+    } finally {
+      setChatContactsLoading(false);
+    }
+  };
+
+  const openDirectConversation = async (contact: ChatContact) => {
+    const service = directChat.current;
+    if (!service) throw new Error("Chat cá nhân chưa được khởi tạo.");
+    const request = ++directOpenRequest.current;
+    if (directContactRef.current?.id !== contact.id) setDirectMessageBody("");
+    directContactRef.current = contact;
+    setDirectContact(contact);
+    setDirectOpening(true);
+    try {
+      const history = await service.history(contact.id);
+      if (directOpenRequest.current !== request) return;
+      setDirectMessages(history);
+      try {
+        await connectPeer();
+        const discovery = await peer.current!.lookupPeer(contact.id);
+        if (directOpenRequest.current !== request) return;
+        setOnline((current) =>
+          discovery.online
+            ? [...new Set([...current, contact.id])]
+            : current.filter((id) => id !== contact.id),
+        );
+      } catch (caught) {
+        if (directOpenRequest.current !== request) return;
+        setOnline((current) => current.filter((id) => id !== contact.id));
+        setError(
+          `Không lấy được trạng thái của ${contact.name}. Bạn vẫn có thể xem lịch sử trên máy: ${caught instanceof Error ? caught.message : String(caught)}`,
+        );
+      }
+    } finally {
+      if (directOpenRequest.current === request) setDirectOpening(false);
+    }
+  };
+
+  const refreshDirectHistory = async (contactId: string) => {
+    const service = directChat.current;
+    if (!service) return;
+    const history = await service.history(contactId);
+    if (directContactRef.current?.id === contactId)
+      setDirectMessages(history);
+  };
+
+  const sendDirectMessage = async () => {
+    const contact = directContactRef.current;
+    const service = directChat.current;
+    if (!contact || !service) throw new Error("Hãy chọn người nhận.");
+    if (directSendingRef.current)
+      throw new Error("Tin nhắn trước đang được gửi.");
+    if (!canSendDirect(directMessageBody, contact.id, false))
+      throw new Error("Tin nhắn phải có từ 1 đến 4000 ký tự.");
+    if (!online.includes(contact.id))
+      throw new Error(
+        `${contact.name} đang offline. Hệ thống chưa hỗ trợ giao tin offline.`,
+      );
+    const body = directMessageBody.trim();
+    directSendingRef.current = true;
+    setDirectSending(true);
+    try {
+      await connectPeer();
+      await service.send(contact.id, body);
+      if (directContactRef.current?.id === contact.id)
+        setDirectMessageBody("");
+    } finally {
+      try {
+        await refreshDirectHistory(contact.id);
+      } finally {
+        directSendingRef.current = false;
+        setDirectSending(false);
+      }
+    }
   };
 
   const auth = async (register: boolean) => {
@@ -415,8 +563,15 @@ export default function App() {
   };
 
   const logout = async () => {
-    peer.current?.close();
+    directOpenRequest.current += 1;
+    const currentPeer = peer.current;
+    peer.current = null;
+    currentPeer?.close();
     peerConnect.current = null;
+    store.current = null;
+    directChat.current = null;
+    directContactRef.current = null;
+    projectRef.current = null;
     await disconnectGoogle();
     try {
       await clearAllReminders();
@@ -432,6 +587,17 @@ export default function App() {
     setCalendarScope("all");
     setPendingProjectEvent(null);
     setMessages([]);
+    setOnline([]);
+    setGroup(null);
+    setModes({});
+    setLogs([]);
+    setForceRelay(false);
+    setChatContacts([]);
+    setDirectContact(null);
+    setDirectMessages([]);
+    setDirectMessageBody("");
+    directSendingRef.current = false;
+    setDirectSending(false);
     setGoogleEmail("");
     setNotificationsReady(false);
     setMainView("calendar");
@@ -1177,6 +1343,151 @@ export default function App() {
     );
   };
 
+  const renderDirectMessages = () => {
+    if (!directContact)
+      return (
+        <>
+          <Text style={styles.subtitle}>
+            Chọn một thành viên cùng dự án để chat riêng. Tin nhắn được lưu cục
+            bộ trên thiết bị và không xuất hiện trong Chat nhóm dự án.
+          </Text>
+          {button(
+            chatContactsLoading ? "Đang tải danh bạ…" : "Làm mới danh bạ",
+            () => void run(loadDirectContacts),
+            chatContactsLoading,
+            true,
+          )}
+          {chatContacts.map((contact) => {
+            const history = directMessagesForContact(
+              messages,
+              user._id,
+              contact.id,
+            );
+            const latest = history.at(-1);
+            const contactOnline = online.includes(contact.id);
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Mở chat với ${contact.name}`}
+                key={contact.id}
+                style={styles.contactCard}
+                onPress={() =>
+                  void run(() => openDirectConversation(contact))
+                }
+              >
+                <View
+                  style={[
+                    styles.presenceDot,
+                    contactOnline
+                      ? styles.presenceOnline
+                      : styles.presenceOffline,
+                  ]}
+                />
+                <View style={styles.contactText}>
+                  <View style={styles.contactTitleRow}>
+                    <Text style={styles.strong}>{contact.name}</Text>
+                    <Text style={styles.muted}>
+                      {contactOnline ? "Online" : "Offline"}
+                    </Text>
+                  </View>
+                  <Text style={styles.muted}>{contact.email}</Text>
+                  <Text numberOfLines={1} style={styles.contactPreview}>
+                    {latest
+                      ? `${latest.message.senderId === user._id ? "Bạn: " : ""}${latest.message.body}`
+                      : "Chưa có tin nhắn"}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {!chatContactsLoading && !chatContacts.length && (
+            <View style={styles.emptyCard}>
+              <Text style={styles.strong}>Danh bạ đang trống</Text>
+              <Text style={styles.muted}>
+                Hãy thêm thành viên đã đăng ký vào dự án, sau đó làm mới danh
+                bạ.
+              </Text>
+            </View>
+          )}
+        </>
+      );
+
+    const contactOnline = online.includes(directContact.id);
+    const visibleMessages = directMessagesForContact(
+      directMessages,
+      user._id,
+      directContact.id,
+    );
+    return (
+      <>
+        <View style={styles.directStatusCard}>
+          <Text style={styles.muted}>
+            {contactOnline
+              ? `Đang online · ${modes[directContact.id] || "chưa chọn đường truyền"}`
+              : "Đang offline · không có hàng đợi giao tin offline"}
+          </Text>
+          <View style={styles.wrap}>
+            {button(
+              "Làm mới trạng thái",
+              () => void run(() => openDirectConversation(directContact)),
+              directOpening,
+              true,
+            )}
+            {button(
+              forceRelay ? "Đang ép RELAY" : "DIRECT trước",
+              () => {
+                setForceRelay(!forceRelay);
+                if (peer.current) peer.current.forceRelay = !forceRelay;
+              },
+              false,
+              true,
+            )}
+          </View>
+        </View>
+        {directOpening && !visibleMessages.length && (
+          <Text style={styles.muted}>Đang tải lịch sử trên thiết bị…</Text>
+        )}
+        {!directOpening && !visibleMessages.length && (
+          <View style={styles.emptyCard}>
+            <Text style={styles.muted}>
+              Chưa có tin nhắn với {directContact.name}.
+            </Text>
+          </View>
+        )}
+        {visibleMessages.map((row) => {
+          const outgoing = row.message.senderId === user._id;
+          const route =
+            row.status === "pending"
+              ? "Đang chọn đường truyền"
+              : row.message.mode;
+          return (
+            <View
+              key={`${row.message.messageId}-${row.message.senderId}-${row.message.receiverId}`}
+              style={[
+                styles.messageRow,
+                outgoing ? styles.messageRowOutgoing : styles.messageRowIncoming,
+              ]}
+            >
+              <View
+                style={[
+                  styles.messageBubble,
+                  outgoing ? styles.messageOutgoing : styles.messageIncoming,
+                  row.status === "failed" && styles.messageFailed,
+                ]}
+              >
+                <Text style={styles.messageBody}>{row.message.body}</Text>
+                <Text style={styles.messageMeta}>
+                  {formatViDateTime(row.message.timestamp)} · {route} ·{" "}
+                  {directMessageStatusLabel(row.status, outgoing)}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </>
+    );
+  };
+
   const renderAccount = () => (
     <>
       <Text style={styles.pageTitle}>Cá nhân</Text>
@@ -1296,6 +1607,74 @@ export default function App() {
     </View>
   );
 
+  const messagesToolbar = (
+    <View style={[styles.contextToolbar, styles.messagesToolbar]}>
+      {directContact ? (
+        <>
+          <View style={styles.projectTitleRow}>
+            {button("← Danh bạ", closeDirectConversation, false, true)}
+            <View style={styles.contactText}>
+              <Text style={styles.contextTitle}>{directContact.name}</Text>
+              <Text style={styles.contextSubtitle}>
+                {directContact.email} ·{" "}
+                {online.includes(directContact.id) ? "Online" : "Offline"}
+              </Text>
+            </View>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.contextTitle}>Tin nhắn</Text>
+          <Text style={styles.contextSubtitle}>
+            Chat cá nhân với thành viên trong các dự án của bạn.
+          </Text>
+        </>
+      )}
+    </View>
+  );
+
+  const directCanSend =
+    !!directContact &&
+    online.includes(directContact.id) &&
+    canSendDirect(directMessageBody, directContact.id, directSending);
+
+  const directComposer = directContact && (
+    <View style={styles.chatComposer}>
+      <TextInput
+        accessibilityLabel={`Tin nhắn gửi ${directContact.name}`}
+        style={styles.chatComposerInput}
+        value={directMessageBody}
+        onChangeText={setDirectMessageBody}
+        placeholder={
+          online.includes(directContact.id)
+            ? "Nhập tin nhắn"
+            : `${directContact.name} đang offline`
+        }
+        placeholderTextColor="#64748b"
+        maxLength={4000}
+        editable={!directSending && online.includes(directContact.id)}
+        returnKeyType="send"
+        onSubmitEditing={() => {
+          if (directCanSend) void run(sendDirectMessage);
+        }}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Gửi tin nhắn riêng"
+        disabled={!directCanSend}
+        onPress={() => void run(sendDirectMessage)}
+        style={[
+          styles.chatSendButton,
+          !directCanSend && styles.disabled,
+        ]}
+      >
+        <Text style={styles.buttonText}>
+          {directSending ? "Đang gửi…" : "Gửi"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.page}>
       <View style={styles.header}>
@@ -1308,11 +1687,17 @@ export default function App() {
       </View>
       {mainView === "calendar" && calendarToolbar}
       {mainView === "project" && projectToolbar}
+      {mainView === "messages" && messagesToolbar}
       <ScrollView
-        key={`${mainView}-${mainView === "project" ? tab : ""}`}
+        ref={contentScroll}
+        key={`${mainView}-${mainView === "project" ? tab : ""}-${mainView === "messages" ? directContact?.id || "contacts" : ""}`}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => {
+          if (mainView === "messages" && directContact)
+            contentScroll.current?.scrollToEnd({ animated: true });
+        }}
       >
         {!!error && (
           <View style={styles.errorBox}>
@@ -1341,13 +1726,16 @@ export default function App() {
         )}
         {mainView === "projects" && renderProjects()}
         {mainView === "project" && renderProject()}
+        {mainView === "messages" && renderDirectMessages()}
         {mainView === "account" && renderAccount()}
       </ScrollView>
+      {mainView === "messages" && directComposer}
       <View style={styles.bottomNav}>
         {(
           [
             ["calendar", "▣", "Lịch"],
             ["projects", "▤", "Dự án"],
+            ["messages", "✉", "Tin nhắn"],
             ["account", "●", "Cá nhân"],
           ] as const
         ).map(([view, icon, label]) => {
@@ -1361,6 +1749,7 @@ export default function App() {
                 setMainView(view);
                 if (view === "calendar") void run(loadCalendar);
                 if (view === "projects") void run(loadProjects);
+                if (view === "messages") void run(loadDirectContacts);
               }}
               style={styles.navItem}
             >
@@ -1401,6 +1790,7 @@ const styles = StyleSheet.create({
   },
   calendarToolbar: { paddingBottom: 10, gap: 5 },
   projectToolbar: { paddingBottom: 1 },
+  messagesToolbar: { paddingBottom: 9 },
   contextTitle: {
     fontSize: 19,
     fontWeight: "800",
@@ -1541,6 +1931,92 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   memberText: { flex: 1 },
+  contactCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  contactText: { flex: 1, minWidth: 0 },
+  contactTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  contactPreview: { color: "#334155", marginTop: 4 },
+  presenceDot: { width: 11, height: 11, borderRadius: 6 },
+  presenceOnline: { backgroundColor: "#22c55e" },
+  presenceOffline: { backgroundColor: "#94a3b8" },
+  directStatusCard: {
+    padding: 10,
+    backgroundColor: "#e2e8f0",
+    borderRadius: 9,
+    gap: 6,
+  },
+  emptyCard: {
+    padding: 16,
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    gap: 5,
+  },
+  messageRow: { width: "100%", marginVertical: 3 },
+  messageRowOutgoing: { alignItems: "flex-end" },
+  messageRowIncoming: { alignItems: "flex-start" },
+  messageBubble: {
+    maxWidth: "84%",
+    minWidth: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 13,
+    gap: 5,
+  },
+  messageOutgoing: { backgroundColor: "#bfdbfe" },
+  messageIncoming: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  messageFailed: { backgroundColor: "#fee2e2", borderColor: "#fca5a5" },
+  messageBody: { color: "#0f172a", fontSize: 15, lineHeight: 20 },
+  messageMeta: { color: "#64748b", fontSize: 10 },
+  chatComposer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#cbd5e1",
+  },
+  chatComposerInput: {
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: "#94a3b8",
+    backgroundColor: "#fff",
+    color: "#0f172a",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 15,
+  },
+  chatSendButton: {
+    minHeight: 42,
+    minWidth: 58,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563eb",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
   bottomNav: {
     flexDirection: "row",
     backgroundColor: "#fff",

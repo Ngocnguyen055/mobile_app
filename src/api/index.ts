@@ -12,6 +12,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { z } from "zod";
 import { User, Project, Task, Event, Discussion, Document } from "./models.ts";
+import { listContactsForUser } from "./contactService.ts";
 
 loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 if (
@@ -217,6 +218,9 @@ export function createApi() {
   app.get("/me", async (req, res) => {
     const user = await User.findById(req.userId).select("name email");
     res.json(user);
+  });
+  app.get("/contacts", async (req, res) => {
+    return res.json(await listContactsForUser(req.userId!));
   });
   app.get("/calendar", async (req, res) => {
     const range = check(calendarQuery, req.query);

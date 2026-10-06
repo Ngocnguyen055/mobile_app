@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit -p src/shared && tsc --noEmit -p src/api && tsc --noEmit -p src/signaling && tsc --noEmit -p src/relay && tsc --noEmit -p src/web-peer && tsc --noEmit -p src/mobile",
     "test": "vitest run",
     "test:calendar-api": "tsx scripts/verify-calendar.ts",
+    "test:contacts-api": "tsx scripts/verify-contacts.ts",
     "lint": "eslint src tests scripts --ext .ts,.tsx",
     "seed": "tsx scripts/seed.ts",
     "android": "npm run android -w @ds01/mobile",

@@ -6,7 +6,11 @@ import jwt from "jsonwebtoken";
 import { Server, type Socket } from "socket.io";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
-import { peerIdSchema, type Group } from "@ds01/shared";
+import {
+  peerIdSchema,
+  type Group,
+  type PeerDiscovery,
+} from "@ds01/shared";
 
 loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 if (
@@ -27,7 +31,9 @@ type Reply = (response: {
   peers?: string[];
   groups?: Group[];
   group?: Group;
+  peer?: PeerDiscovery;
 }) => void;
+const HEARTBEAT_FRESH_MS = 30_000;
 const PEER_SECRET = process.env.PEER_SECRET || "local-development-only-secret";
 const JWT_SECRET = process.env.JWT_SECRET || "local-development-only-secret";
 export function createSignaling(httpServer: HttpServer = createServer()) {
@@ -48,7 +54,8 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
     const group = groups.get(req.params.id);
     return group ? res.json(group) : res.sendStatus(404);
   });
-  const publishPresence = () => io.emit("presence", [...peers.keys()]);
+  const publishPresence = () =>
+    io.to("registered-peers").emit("presence", [...peers.keys()]);
   const peerFor = (socket: Socket) => socket.data.peerId as string | undefined;
   io.on("connection", (socket) => {
     socket.on("peer:register", (input: unknown, reply: Reply) => {
@@ -87,6 +94,7 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
       if (previous && previous !== peerId) peers.delete(previous);
       socket.data.peerId = peerId;
       peers.set(peerId, { socket, lastSeen: Date.now() });
+      void socket.join("registered-peers");
       const token = jwt.sign({ sub: peerId }, PEER_SECRET, {
         expiresIn: "12h",
       });
@@ -106,8 +114,59 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
         peers.get(id)!.lastSeen = Date.now();
     });
     socket.on("peer:list", (reply: Reply) => {
-      if (typeof reply === "function")
-        reply({ ok: true, peers: [...peers.keys()] });
+      if (typeof reply !== "function") return;
+      const requesterId = peerFor(socket);
+      if (!requesterId || peers.get(requesterId)?.socket.id !== socket.id)
+        return reply({ ok: false, error: "registration required" });
+      reply({ ok: true, peers: [...peers.keys()] });
+    });
+    socket.on("peer:lookup", (input: unknown, reply: Reply) => {
+      if (typeof reply !== "function") return;
+      const requesterId = peerFor(socket);
+      if (!requesterId || peers.get(requesterId)?.socket.id !== socket.id)
+        return reply({ ok: false, error: "registration required" });
+      if (
+        !input ||
+        typeof input !== "object" ||
+        Array.isArray(input) ||
+        Object.keys(input).length !== 1 ||
+        !Object.hasOwn(input, "peerId")
+      )
+        return reply({ ok: false, error: "invalid peer lookup" });
+      const parsed = peerIdSchema.safeParse(
+        (input as { peerId?: unknown }).peerId,
+      );
+      if (!parsed.success)
+        return reply({ ok: false, error: "invalid peer lookup" });
+      const peerId = parsed.data;
+      const target = peers.get(peerId);
+      if (
+        !target ||
+        !target.socket.connected ||
+        Date.now() - target.lastSeen > HEARTBEAT_FRESH_MS
+      )
+        return reply({
+          ok: true,
+          peer: {
+            peerId,
+            online: false,
+            lastSeen: null,
+            connection: null,
+          },
+        });
+      return reply({
+        ok: true,
+        peer: {
+          peerId,
+          online: true,
+          lastSeen: target.lastSeen,
+          connection: {
+            transport: "webrtc-datachannel",
+            signaling: "socket.io",
+            relay: "socket.io",
+          },
+        },
+      });
     });
     socket.on("signal:send", (input: unknown, reply: Reply) => {
       const senderId = peerFor(socket);
@@ -205,7 +264,7 @@ export function createSignaling(httpServer: HttpServer = createServer()) {
   });
   const timer = setInterval(() => {
     for (const [id, peer] of peers)
-      if (Date.now() - peer.lastSeen > 30_000) {
+      if (Date.now() - peer.lastSeen > HEARTBEAT_FRESH_MS) {
         peers.delete(id);
         peer.socket.disconnect(true);
         console.log(`[signal] TIMEOUT ${id}`);

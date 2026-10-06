@@ -20,4 +20,13 @@ describe("protocol validation", () => {
     expect(() => parseMessage({ ...base(), body: "x".repeat(5000) })).toThrow();
     expect(() => parseMessage({ ...base(), type: "ack" })).toThrow();
   });
+  it("accepts omitted/null group IDs for personal messages and preserves valid group IDs", () => {
+    expect(parseMessage(base()).groupId).toBeUndefined();
+    expect(parseMessage({ ...base(), groupId: null }).groupId).toBeNull();
+    const groupId = randomUUID();
+    expect(parseMessage({ ...base(), groupId }).groupId).toBe(groupId);
+    expect(() => parseMessage({ ...base(), groupId: "" })).toThrow();
+    expect(() => parseMessage({ ...base(), groupId: "not-a-uuid" })).toThrow();
+    expect(parseMessage({ ...base(), type: "ack", groupId: null, ackFor: randomUUID(), body: "" }).groupId).toBeNull();
+  });
 });

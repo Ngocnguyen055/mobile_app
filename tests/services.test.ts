@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { io, type Socket } from "socket.io-client";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
@@ -38,11 +38,137 @@ async function register(
   return { signal, token: result.token as string };
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
   sockets.forEach((s) => s.disconnect());
   sockets.length = 0;
   for (const service of services.splice(0)) await service.close();
 });
 describe("signaling and relay integration", () => {
+  it("looks up fresh peers, refreshes heartbeat, and reports disconnects without leaking connection internals", async () => {
+    const signal = createSignaling();
+    const url = await start(signal);
+    const a = await register(url, "peer-a");
+    const b = await register(url, "peer-b");
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    signal.peers.get("peer-b")!.lastSeen = now - 1;
+
+    expect(
+      await a.signal
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-b" }),
+    ).toEqual({
+      ok: true,
+      peer: {
+        peerId: "peer-b",
+        online: true,
+        lastSeen: now - 1,
+        connection: {
+          transport: "webrtc-datachannel",
+          signaling: "socket.io",
+          relay: "socket.io",
+        },
+      },
+    });
+
+    signal.peers.get("peer-b")!.lastSeen = now - 30_001;
+    b.signal.emit("peer:heartbeat");
+    expect(
+      await b.signal
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-b" }),
+    ).toMatchObject({
+      ok: true,
+      peer: { peerId: "peer-b", online: true, lastSeen: now },
+    });
+
+    const disconnected = new Promise<void>((resolve) => {
+      const onPresence = (peerIds: string[]) => {
+        if (!peerIds.includes("peer-b")) {
+          a.signal.off("presence", onPresence);
+          resolve();
+        }
+      };
+      a.signal.on("presence", onPresence);
+    });
+    b.signal.disconnect();
+    await disconnected;
+    expect(
+      await a.signal
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-b" }),
+    ).toEqual({
+      ok: true,
+      peer: {
+        peerId: "peer-b",
+        online: false,
+        lastSeen: null,
+        connection: null,
+      },
+    });
+  });
+
+  it("requires current registration, validates lookup input strictly, and hides stale timestamps", async () => {
+    const signal = createSignaling();
+    const url = await start(signal);
+    const anonymous = await connect(url);
+    const anonymousPresence = vi.fn();
+    anonymous.on("presence", anonymousPresence);
+    expect(
+      await anonymous
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-b" }),
+    ).toEqual({ ok: false, error: "registration required" });
+    expect(
+      await anonymous.timeout(3000).emitWithAck("peer:list"),
+    ).toEqual({ ok: false, error: "registration required" });
+
+    const a = await register(url, "peer-a");
+    await register(url, "peer-b");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(anonymousPresence).not.toHaveBeenCalled();
+    for (const input of [
+      null,
+      {},
+      { peerId: "../bad" },
+      { peerId: "peer-b", extra: true },
+    ]) {
+      expect(
+        await a.signal.timeout(3000).emitWithAck("peer:lookup", input),
+      ).toEqual({ ok: false, error: "invalid peer lookup" });
+    }
+
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    signal.peers.get("peer-b")!.lastSeen = now - 30_001;
+    expect(
+      await a.signal
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-b" }),
+    ).toEqual({
+      ok: true,
+      peer: {
+        peerId: "peer-b",
+        online: false,
+        lastSeen: null,
+        connection: null,
+      },
+    });
+    expect(
+      await a.signal
+        .timeout(3000)
+        .emitWithAck("peer:lookup", { peerId: "peer-unknown" }),
+    ).toEqual({
+      ok: true,
+      peer: {
+        peerId: "peer-unknown",
+        online: false,
+        lastSeen: null,
+        connection: null,
+      },
+    });
+  });
+
   it("discovers three peers, rejects duplicate identity, and resolves concurrent group edits by version", async () => {
     const signal = createSignaling();
     const url = await start(signal);

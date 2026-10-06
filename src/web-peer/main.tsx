@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { PeerClient, type Group, type StoredMessage } from "@ds01/shared";
+import { PeerClient, isDirectMessageBetween, type Group, type StoredMessage } from "@ds01/shared";
 import { WebStore } from "./store.ts";
 import "./style.css";
 
@@ -94,7 +94,7 @@ function App() {
         if (failed.length)
           setError(`Delivery failed: ${failed.map(([id]) => id).join(", ")}`);
       } else {
-        await client.current.send(target, body);
+        await client.current.sendDirect(target, body);
       }
       setBody("");
       refresh();
@@ -127,8 +127,7 @@ function App() {
   const visible = messages.filter((row) =>
     groupTarget
       ? row.message.groupId === groupTarget
-      : !row.message.groupId &&
-        (row.message.senderId === target || row.message.receiverId === target),
+      : isDirectMessageBetween(row.message, peerId, target),
   );
   return (
     <main>

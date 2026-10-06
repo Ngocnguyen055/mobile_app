@@ -1,5 +1,11 @@
-import type { ChatStore, StoredMessage, MessageStatus } from "@ds01/shared";
-export class WebStore implements ChatStore {
+import {
+  isDirectMessageBetween,
+  peerIdSchema,
+  type DirectChatStore,
+  type StoredMessage,
+  type MessageStatus,
+} from "@ds01/shared";
+export class WebStore implements DirectChatStore {
   constructor(private scope: string) {}
   private get key() {
     return `ds01-history-v1-${this.scope}`;
@@ -28,6 +34,21 @@ export class WebStore implements ChatStore {
     else rows.push(row);
     this.write(rows);
   }
+  async putDirect(row: StoredMessage) {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const message = row.message;
+    const otherPeerId =
+      message.senderId === currentPeerId
+        ? message.receiverId
+        : message.senderId;
+    peerIdSchema.parse(otherPeerId);
+    if (
+      otherPeerId === currentPeerId ||
+      !isDirectMessageBetween(message, currentPeerId, otherPeerId)
+    )
+      throw new Error("direct message does not belong to this store");
+    await this.put(row);
+  }
   async mark(messageId: string, receiverId: string, status: MessageStatus) {
     const rows = this.read();
     for (const row of rows)
@@ -50,5 +71,22 @@ export class WebStore implements ChatStore {
         a.message.timestamp - b.message.timestamp ||
         a.message.messageId.localeCompare(b.message.messageId),
     );
+  }
+  async listDirect(peerId: string) {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (currentPeerId === otherPeerId)
+      throw new Error("direct conversation requires another peer");
+    return this.read()
+      .filter((row) =>
+        isDirectMessageBetween(row.message, currentPeerId, otherPeerId),
+      )
+      .sort(
+        (a, b) =>
+          a.message.timestamp - b.message.timestamp ||
+          a.message.messageId.localeCompare(b.message.messageId) ||
+          a.message.senderId.localeCompare(b.message.senderId) ||
+          a.message.receiverId.localeCompare(b.message.receiverId),
+      );
   }
 }
