@@ -145,7 +145,13 @@ function seedLegacyMessages(database: DatabaseSync) {
   const insert = database.prepare(
     "INSERT INTO messages(scope,message_id,sender_id,receiver_id,timestamp,payload,status) VALUES(?,?,?,?,?,?,?)",
   );
-  for (const stored of [outbound, groupMessage, acknowledgement, inbound, outsiderMessage]) {
+  for (const stored of [
+    outbound,
+    groupMessage,
+    acknowledgement,
+    inbound,
+    outsiderMessage,
+  ]) {
     const message = stored.message;
     insert.run(
       CURRENT,
@@ -221,8 +227,8 @@ describe("MobileStore direct-message migration", () => {
     await store.putDirect(added);
 
     expect(
-      sqliteState.database!
-        .prepare("SELECT group_id FROM messages WHERE message_id=?")
+      sqliteState
+        .database!.prepare("SELECT group_id FROM messages WHERE message_id=?")
         .get(ids.added),
     ).toMatchObject({ group_id: null });
     expect((await store.listDirect(OTHER)).at(-1)?.message.messageId).toBe(

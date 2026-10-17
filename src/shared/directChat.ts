@@ -1,5 +1,9 @@
 import { peerIdSchema, type PeerDiscovery } from "./protocol.ts";
-import { PeerClient, type DirectChatStore, type StoredMessage } from "./peer.ts";
+import {
+  PeerClient,
+  type DirectChatStore,
+  type StoredMessage,
+} from "./peer.ts";
 
 /** UI-independent 1:1 operations on an already connected PeerClient. */
 export class DirectChatService {
@@ -10,7 +14,8 @@ export class DirectChatService {
 
   private checkRecipient(peerId: string) {
     peerIdSchema.parse(peerId);
-    if (peerId === this.peer.peerId) throw new Error("cannot chat with yourself");
+    if (peerId === this.peer.peerId)
+      throw new Error("cannot chat with yourself");
   }
 
   async history(peerId: string): Promise<StoredMessage[]> {

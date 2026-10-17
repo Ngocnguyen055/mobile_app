@@ -6,8 +6,12 @@ export function isDirectMessageBetween(
   currentPeerId: string,
   otherPeerId: string,
 ): boolean {
-  return message.type === "text" && message.groupId == null && (
-    (message.senderId === currentPeerId && message.receiverId === otherPeerId) ||
-    (message.senderId === otherPeerId && message.receiverId === currentPeerId)
+  return (
+    message.type === "text" &&
+    message.groupId == null &&
+    ((message.senderId === currentPeerId &&
+      message.receiverId === otherPeerId) ||
+      (message.senderId === otherPeerId &&
+        message.receiverId === currentPeerId))
   );
 }

@@ -20,8 +20,13 @@ export function httpProjectDirectory(): ProjectDirectory {
     return response.json() as Promise<T>;
   }
   return {
-    group: (id) => read<Group>(`/internal/chat-groups/${encodeURIComponent(id)}`),
-    project: (id) => read<Group>(`/internal/projects/${encodeURIComponent(id)}/chat-group`),
-    forPeer: async (id) => (await read<Group[]>(`/internal/chat-groups?userId=${encodeURIComponent(id)}`)) || [],
+    group: (id) =>
+      read<Group>(`/internal/chat-groups/${encodeURIComponent(id)}`),
+    project: (id) =>
+      read<Group>(`/internal/projects/${encodeURIComponent(id)}/chat-group`),
+    forPeer: async (id) =>
+      (await read<Group[]>(
+        `/internal/chat-groups?userId=${encodeURIComponent(id)}`,
+      )) || [],
   };
 }

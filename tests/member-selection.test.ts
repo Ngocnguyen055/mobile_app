@@ -28,7 +28,9 @@ describe("member email selection", () => {
   });
 
   it("does not mutate the input array or its members", () => {
-    const users = Object.freeze(members.map((member) => Object.freeze({ ...member })));
+    const users = Object.freeze(
+      members.map((member) => Object.freeze({ ...member })),
+    );
     const before = users.map((user) => ({ ...user }));
 
     const result = filterMembersByEmail(users, "example");

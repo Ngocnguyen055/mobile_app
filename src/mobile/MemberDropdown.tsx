@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import type { User } from "./api.ts";
 import { filterMembersByEmail } from "./memberSelection.ts";
+import { cardShadow, colors } from "./theme.ts";
 
 type Props = {
   users: User[];
@@ -53,18 +54,28 @@ export default function MemberDropdown({
     <View style={styles.container}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={selected ? `${label}: ${selected.name}, ${selected.email}` : label}
-        accessibilityState={{ expanded, disabled: disabled || loading || !users.length }}
+        accessibilityLabel={
+          selected ? `${label}: ${selected.name}, ${selected.email}` : label
+        }
+        accessibilityState={{
+          expanded,
+          disabled: disabled || loading || !users.length,
+        }}
         disabled={disabled || loading || !users.length}
         onPress={() => {
           if (expanded) close();
-          else { setQuery(""); setExpanded(true); }
+          else {
+            setQuery("");
+            setExpanded(true);
+          }
         }}
         style={[styles.field, disabled && styles.disabled]}
       >
         <View style={styles.selection}>
           <Text style={[styles.name, !selected && styles.placeholder]}>
-            {loading ? "Đang tải thành viên dự án tổng…" : selected?.name || label}
+            {loading
+              ? "Đang tải thành viên dự án tổng…"
+              : selected?.name || label}
           </Text>
           {!!selected && <Text style={styles.email}>{selected.email}</Text>}
         </View>
@@ -72,7 +83,9 @@ export default function MemberDropdown({
       </Pressable>
 
       {!loading && !users.length && (
-        <Text style={styles.hint}>Chưa có thành viên phù hợp. Hãy thêm thành viên vào dự án tổng trước.</Text>
+        <Text style={styles.hint}>
+          Chưa có thành viên phù hợp. Hãy thêm thành viên vào dự án tổng trước.
+        </Text>
       )}
 
       {expanded && !disabled && !loading && (
@@ -94,15 +107,25 @@ export default function MemberDropdown({
             nestedScrollEnabled
             keyboardShouldPersistTaps="handled"
           >
-            {!results.length && <Text style={styles.empty}>Không tìm thấy thành viên có email phù hợp trong dự án tổng.</Text>}
+            {!results.length && (
+              <Text style={styles.empty}>
+                Không tìm thấy thành viên có email phù hợp trong dự án tổng.
+              </Text>
+            )}
             {results.map((user) => (
               <Pressable
                 key={user._id}
                 accessibilityRole="radio"
                 accessibilityLabel={`${user.name}, ${user.email}`}
                 accessibilityState={{ selected: user._id === value }}
-                style={[styles.option, user._id === value && styles.selectedOption]}
-                onPress={() => { onChange(user._id); close(); }}
+                style={[
+                  styles.option,
+                  user._id === value && styles.selectedOption,
+                ]}
+                onPress={() => {
+                  onChange(user._id);
+                  close();
+                }}
               >
                 <View style={styles.selection}>
                   <Text style={styles.name}>{user.name}</Text>
@@ -112,7 +135,11 @@ export default function MemberDropdown({
               </Pressable>
             ))}
           </ScrollView>
-          <Pressable accessibilityRole="button" onPress={close} style={styles.close}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={close}
+            style={styles.close}
+          >
             <Text style={styles.closeText}>Đóng danh sách</Text>
           </Pressable>
         </View>
@@ -123,21 +150,59 @@ export default function MemberDropdown({
 
 const styles = StyleSheet.create({
   container: { gap: 5 },
-  field: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: "#94a3b8", borderRadius: 8, padding: 12, minHeight: 48, backgroundColor: "#fff" },
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    padding: 12,
+    minHeight: 50,
+    backgroundColor: colors.surface,
+  },
   selection: { flex: 1, gap: 3 },
-  name: { color: "#0f172a", fontSize: 14, fontWeight: "600" },
-  email: { color: "#475569", fontSize: 12 },
-  placeholder: { color: "#64748b", fontWeight: "400" },
-  arrow: { color: "#2563eb", fontSize: 18 },
+  name: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  email: { color: colors.textSoft, fontSize: 12 },
+  placeholder: { color: colors.textSoft, fontWeight: "400" },
+  arrow: { color: colors.primary, fontSize: 18 },
   disabled: { opacity: 0.5 },
-  hint: { color: "#64748b", fontSize: 12, lineHeight: 18 },
-  menu: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, backgroundColor: "#fff", overflow: "hidden" },
-  search: { borderWidth: 1, borderColor: "#94a3b8", borderRadius: 6, margin: 8, padding: 10, color: "#0f172a", backgroundColor: "#fff" },
+  hint: { color: colors.textSoft, fontSize: 12, lineHeight: 18 },
+  menu: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
+    ...cardShadow,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 11,
+    margin: 8,
+    padding: 11,
+    color: colors.text,
+    backgroundColor: colors.surfaceMuted,
+  },
   options: { maxHeight: 220 },
-  option: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#e2e8f0" },
-  selectedOption: { backgroundColor: "#eff6ff" },
-  check: { color: "#2563eb", fontSize: 18, fontWeight: "700" },
-  empty: { padding: 12, color: "#64748b", fontSize: 13, lineHeight: 19 },
-  close: { padding: 10, alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e2e8f0" },
-  closeText: { color: "#2563eb", fontWeight: "600" },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  selectedOption: { backgroundColor: colors.primarySoft },
+  check: { color: colors.primary, fontSize: 18, fontWeight: "700" },
+  empty: { padding: 12, color: colors.textSoft, fontSize: 13, lineHeight: 19 },
+  close: {
+    padding: 11,
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  closeText: { color: colors.primary, fontWeight: "700" },
 });

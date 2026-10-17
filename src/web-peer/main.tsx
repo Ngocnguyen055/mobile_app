@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { PeerClient, isDirectMessageBetween, type Group, type StoredMessage } from "@ds01/shared";
+import {
+  PeerClient,
+  isDirectMessageBetween,
+  type Group,
+  type StoredMessage,
+} from "@ds01/shared";
 import { WebStore } from "./store.ts";
 import "./style.css";
 

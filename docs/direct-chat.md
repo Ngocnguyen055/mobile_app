@@ -7,7 +7,7 @@ Phần này mô tả API, discovery, lưu trữ và giao diện để chat giữ
 Client gọi `GET /contacts` với `Authorization: Bearer <JWT>`. API trả một mảng `{ id, name, email }`, gồm những tài khoản cùng tham gia ít nhất một dự án với người gọi, loại chính người gọi, loại trùng và sắp xếp theo tên/email/ID. `id` là MongoDB user ID và cũng là Peer ID khi Android đăng ký signaling. Không trả password hash, JWT hay thông tin cá nhân của người ngoài các dự án chung.
 
 ```ts
-import { loadChatContacts } from '../src/mobile/api.ts';
+import { loadChatContacts } from "../src/mobile/api.ts";
 const contacts = await loadChatContacts();
 // Chọn một contact; dùng contact.id để discovery và gửi.
 ```
@@ -19,7 +19,7 @@ Danh bạ là phạm vi lựa chọn người của client. Đây chưa phải A
 Sau `await peer.connect()`, gọi `await peer.lookupPeer(contact.id)`. Client cũng có thể gọi Socket.IO trực tiếp:
 
 ```ts
-const result = await signaling.timeout(4000).emitWithAck('peer:lookup', {
+const result = await signaling.timeout(4000).emitWithAck("peer:lookup", {
   peerId: contact.id,
 });
 ```
@@ -51,11 +51,11 @@ JSON trên mô tả cấu trúc response, không phải log demo thực tế. Kh
 `groupId` được schema chấp nhận khi bỏ trường, `undefined` hoặc `null`; UUID hợp lệ vẫn bắt buộc với tin nhóm. Chuỗi rỗng và ID nhóm sai định dạng bị từ chối. Tin nhắn cá nhân và ACK vẫn có `messageId`, `sessionId`, `senderId`, `receiverId`, `timestamp`, `sequence`, `mode` và `attempt`.
 
 ```ts
-await peer.sendDirect(contact.id, 'Chào bạn');
+await peer.sendDirect(contact.id, "Chào bạn");
 // Tương đương gửi trên engine hiện có, không gắn groupId:
-await peer.send(contact.id, 'Chào bạn');
+await peer.send(contact.id, "Chào bạn");
 // Engine cũng chấp nhận biểu diễn null:
-await peer.send(contact.id, 'Chào bạn', null);
+await peer.send(contact.id, "Chào bạn", null);
 ```
 
 "Chat cá nhân" mô tả cuộc trò chuyện chỉ có A và B. Delivery mode vẫn có thể là DIRECT hoặc RELAY. DIRECT thử WebRTC DataChannel trước; nếu mở kênh thất bại, mất kênh hoặc chờ ACK quá hạn, các lần gửi sau dùng relay Socket.IO. DIRECT thành công không chuyển nội dung chat qua signaling/relay. Engine dùng lại ACK ứng dụng, retry giới hạn và chống trùng hiện có. `delivered` nghĩa là ứng dụng nhận đã lưu/phản hồi ACK, chưa phải đã đọc.
@@ -67,7 +67,7 @@ Group Chat vẫn gọi `sendGroup(groupId, body)`: cùng Message ID được g�
 `MobileStore` và `WebStore` có thêm:
 
 ```ts
-await store.putDirect({ message, status: 'received' });
+await store.putDirect({ message, status: "received" });
 const history = await store.listDirect(contact.id);
 ```
 
@@ -95,8 +95,8 @@ Web giữ nguyên key `ds01-history-v1-<Peer ID>`, lọc bằng `isDirectMessage
 `DirectChatService` dùng cùng `PeerClient` và store mà client đã khởi tạo. Không tạo kết nối signaling thứ hai cho cùng user:
 
 ```ts
-import { DirectChatService } from '@ds01/shared';
-import { loadChatContacts } from '../src/mobile/api.ts';
+import { DirectChatService } from "@ds01/shared";
+import { loadChatContacts } from "../src/mobile/api.ts";
 
 // peer và store là instance đã cấu hình trong ứng dụng.
 await peer.connect(); // Chỉ gọi một lần cho instance/phiên kết nối.
@@ -108,7 +108,7 @@ if (contact) {
   // conversation.messages: lịch sử cả hai chiều, không lẫn tin nhóm.
   // conversation.peer: trạng thái online và giao thức kết nối.
   if (conversation.peer.online) {
-    await directChat.send(contact.id, 'Chào bạn');
+    await directChat.send(contact.id, "Chào bạn");
   }
   const history = await directChat.history(contact.id);
 }

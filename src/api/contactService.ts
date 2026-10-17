@@ -18,7 +18,9 @@ const contactOrder = new Intl.Collator("vi", {
 });
 
 export async function listContactsForUser(userId: string): Promise<Contact[]> {
-  const sharedMemberIds = await Project.distinct("members", { members: userId });
+  const sharedMemberIds = await Project.distinct("members", {
+    members: userId,
+  });
   const contactIds = [
     ...new Set(sharedMemberIds.map((memberId) => String(memberId))),
   ].filter((memberId) => memberId && memberId !== userId);

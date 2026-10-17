@@ -119,9 +119,10 @@ describe("signaling and relay integration", () => {
         .timeout(3000)
         .emitWithAck("peer:lookup", { peerId: "peer-b" }),
     ).toEqual({ ok: false, error: "registration required" });
-    expect(
-      await anonymous.timeout(3000).emitWithAck("peer:list"),
-    ).toEqual({ ok: false, error: "registration required" });
+    expect(await anonymous.timeout(3000).emitWithAck("peer:list")).toEqual({
+      ok: false,
+      error: "registration required",
+    });
 
     const a = await register(url, "peer-a");
     await register(url, "peer-b");
@@ -181,12 +182,10 @@ describe("signaling and relay integration", () => {
     const duplicate = await connect(url);
     expect(
       (
-        await duplicate
-          .timeout(3000)
-          .emitWithAck("peer:register", {
-            peerId: "peer-a",
-            identityProof: randomUUID() + randomUUID(),
-          })
+        await duplicate.timeout(3000).emitWithAck("peer:register", {
+          peerId: "peer-a",
+          identityProof: randomUUID() + randomUUID(),
+        })
       ).ok,
     ).toBe(false);
     const created = await a.signal
@@ -195,22 +194,18 @@ describe("signaling and relay integration", () => {
     expect(created.ok).toBe(true);
     const id = created.group.id as string;
     const [first, second] = await Promise.all([
-      a.signal
-        .timeout(3000)
-        .emitWithAck("group:change", {
-          groupId: id,
-          memberId: "peer-c",
-          action: "remove",
-          version: 1,
-        }),
-      b.signal
-        .timeout(3000)
-        .emitWithAck("group:change", {
-          groupId: id,
-          memberId: "peer-b",
-          action: "remove",
-          version: 1,
-        }),
+      a.signal.timeout(3000).emitWithAck("group:change", {
+        groupId: id,
+        memberId: "peer-c",
+        action: "remove",
+        version: 1,
+      }),
+      b.signal.timeout(3000).emitWithAck("group:change", {
+        groupId: id,
+        memberId: "peer-b",
+        action: "remove",
+        version: 1,
+      }),
     ]);
     expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
     expect(signal.groups.get(id)?.version).toBe(2);
@@ -272,13 +267,11 @@ describe("signaling and relay integration", () => {
     ).toBe(false);
     expect(
       (
-        await cr
-          .timeout(3000)
-          .emitWithAck("relay:send", {
-            ...envelope,
-            senderId: "peer-c",
-            groupId: group.id,
-          })
+        await cr.timeout(3000).emitWithAck("relay:send", {
+          ...envelope,
+          senderId: "peer-c",
+          groupId: group.id,
+        })
       ).ok,
     ).toBe(false);
     br.disconnect();

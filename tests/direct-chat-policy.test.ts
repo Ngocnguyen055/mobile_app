@@ -32,9 +32,7 @@ function stored(
       body: type === "text" ? id : "",
       mode: "RELAY",
       ackFor:
-        type === "ack"
-          ? "00000000-0000-4000-8000-000000000099"
-          : undefined,
+        type === "ack" ? "00000000-0000-4000-8000-000000000099" : undefined,
       attempt: 1,
       sequence: 1,
     },

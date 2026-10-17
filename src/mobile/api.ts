@@ -3,7 +3,11 @@ export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:4000";
 let token = "";
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number, public readonly path: string) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly path: string,
+  ) {
     super(message);
   }
 }
@@ -48,8 +52,15 @@ export const json = (method: string, data?: unknown): RequestInit => ({
   method,
   body: data === undefined ? undefined : JSON.stringify(data),
 });
-export type ProjectRole = "OWNER" | "MEMBER" | "DIRECTOR" | "MANAGER" | "EMPLOYEE";
-export type User = { _id: string; id?: string; name: string; email: string; role?: ProjectRole };
+export type ProjectRole =
+  "OWNER" | "MEMBER" | "DIRECTOR" | "MANAGER" | "EMPLOYEE";
+export type User = {
+  _id: string;
+  id?: string;
+  name: string;
+  email: string;
+  role?: ProjectRole;
+};
 export type ChatContact = { id: string; name: string; email: string };
 export async function loadChatContacts(): Promise<ChatContact[]> {
   return api<ChatContact[]>("/contacts");
@@ -57,6 +68,8 @@ export async function loadChatContacts(): Promise<ChatContact[]> {
 export type ProjectSummary = { _id: string; name: string };
 export type Project = {
   _id: string;
+  createdAt?: string;
+  updatedAt?: string;
   name: string;
   description: string;
   owner: string;
@@ -147,6 +160,18 @@ export type Progress = {
   done: number;
   dueSoon: number;
   overdue: number;
-  byPerson: { userId: string; name?: string; total: number; done: number; tasks?: Task[] }[];
-  byProject?: { projectId: string; name: string; total: number; done: number; overdue: number }[];
+  byPerson: {
+    userId: string;
+    name?: string;
+    total: number;
+    done: number;
+    tasks?: Task[];
+  }[];
+  byProject?: {
+    projectId: string;
+    name: string;
+    total: number;
+    done: number;
+    overdue: number;
+  }[];
 };

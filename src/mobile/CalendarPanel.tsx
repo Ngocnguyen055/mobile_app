@@ -14,6 +14,7 @@ import {
 import type { CalendarEvent, Project, ProjectSummary, Task } from "./api.ts";
 import type { ReminderOffset } from "./local.ts";
 import NativeDateTimeField from "./NativeDateTimeField.tsx";
+import ReminderSelect, { REMINDER_OPTIONS } from "./ReminderSelect.tsx";
 import { effectiveTaskStatus, taskStatusLabels } from "./projectPolicy.ts";
 import {
   calendarCreatePermissions,
@@ -35,6 +36,7 @@ import {
   toViDateTimeInput,
   type CalendarMode,
 } from "./calendar.ts";
+import { cardShadow, colors } from "./theme.ts";
 
 export type EventDraft = {
   title: string;
@@ -67,12 +69,6 @@ type Props = {
   onDeleteTask: (task: Task) => Promise<void>;
   onError: (message: string) => void;
 };
-
-const reminderOptions: [ReminderOffset, string][] = [
-  [604800000, "1 tuần"],
-  [86400000, "1 ngày"],
-  [3600000, "1 giờ"],
-];
 
 const projectNameOf = (
   value: string | ProjectSummary | null | undefined,
@@ -220,7 +216,7 @@ export default function CalendarPanel({
     setAllDay(false);
     setEventProjectId(null);
     setEventOffsets(
-      defaultReminderOffsets.length ? defaultReminderOffsets : [86400000],
+      defaultReminderOffsets.length ? [defaultReminderOffsets[0]] : [0],
     );
     setEditorError("");
     setEditorVisible(true);
@@ -234,7 +230,9 @@ export default function CalendarPanel({
     setEndsAt(toViDateTimeInput(event.endsAt));
     setAllDay(!!event.allDay);
     setEventProjectId(calendarProjectId(event.project) || null);
-    setEventOffsets((event.reminderOffsets || []) as ReminderOffset[]);
+    setEventOffsets([
+      ((event.reminderOffsets || [0])[0] ?? 0) as ReminderOffset,
+    ]);
     setEditorError("");
     setEditorVisible(true);
   };
@@ -248,7 +246,8 @@ export default function CalendarPanel({
 
   const submit = async () => {
     try {
-      if (readOnly || !canManageEvents) throw new Error("Lịch dự án này chỉ được xem.");
+      if (readOnly || !canManageEvents)
+        throw new Error("Lịch dự án này chỉ được xem.");
       setEditorError("");
       let start = parseViDateTime(startsAt);
       let end = parseViDateTime(endsAt);
@@ -306,6 +305,21 @@ export default function CalendarPanel({
 
   return (
     <View style={styles.container}>
+      {!readOnly && permissions.canCreateEvent && (
+        <View style={styles.topActionRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={beginNew}
+            style={({ pressed }) => [
+              styles.addEventButton,
+              pressed && styles.addEventButtonPressed,
+            ]}
+          >
+            <Text style={styles.addEventIcon}>＋</Text>
+            <Text style={styles.addEventText}>Thêm sự kiện</Text>
+          </Pressable>
+        </View>
+      )}
       <View style={styles.modeRow}>
         {(["day", "week", "month"] as CalendarMode[]).map((value) => (
           <Pressable
@@ -411,11 +425,6 @@ export default function CalendarPanel({
       </View>
 
       <Text style={styles.selectedTitle}>{formatViDate(selectedDay)}</Text>
-      {!readOnly && permissions.canCreateEvent && (
-        <View style={styles.wrap}>
-          {actionButton("+ Thêm sự kiện", beginNew)}
-        </View>
-      )}
 
       {!selectedTasks.length && !selectedEvents.length && (
         <View style={styles.emptyAgenda}>
@@ -443,8 +452,14 @@ export default function CalendarPanel({
             {taskStatusLabels[effectiveTaskStatus(task)]}
           </Text>
           <View style={styles.wrap}>
-            {actionButton(readOnly || !canManageTasks ? "Xem" : "Xem / sửa", () => onOpenTask(task), true)}
-            {!!fixedProjectId && !readOnly && canManageTasks &&
+            {actionButton(
+              readOnly || !canManageTasks ? "Xem" : "Xem / sửa",
+              () => onOpenTask(task),
+              true,
+            )}
+            {!!fixedProjectId &&
+              !readOnly &&
+              canManageTasks &&
               actionButton("Xóa", () => confirmDeleteTask(task), true)}
           </View>
         </View>
@@ -469,7 +484,7 @@ export default function CalendarPanel({
               {event.reminderOffsets
                 .map(
                   (offset) =>
-                    reminderOptions.find(([value]) => value === offset)?.[1],
+                    REMINDER_OPTIONS.find(([value]) => value === offset)?.[1],
                 )
                 .filter(Boolean)
                 .join(", ")}
@@ -653,36 +668,11 @@ export default function CalendarPanel({
                 </Text>
               )}
 
-              <Text style={styles.fieldLabel}>Nhắc trước</Text>
-              <View style={styles.wrap}>
-                {reminderOptions.map(([value, label]) => {
-                  const active = eventOffsets.includes(value);
-                  return (
-                    <Pressable
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: active }}
-                      key={value}
-                      onPress={() =>
-                        setEventOffsets((current) =>
-                          active
-                            ? current.filter((item) => item !== value)
-                            : [...current, value],
-                        )
-                      }
-                      style={[styles.chip, active && styles.activeChip]}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          active && styles.activeChipText,
-                        ]}
-                      >
-                        {active ? "☑" : "☐"} {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ReminderSelect
+                value={eventOffsets[0] ?? 0}
+                onChange={(value) => setEventOffsets([value])}
+                disabled={saving}
+              />
             </ScrollView>
 
             <View style={styles.modalFooter}>
@@ -726,8 +716,36 @@ export default function CalendarPanel({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 10 },
-  sectionTitle: { fontWeight: "700", color: "#334155" },
+  container: { gap: 12 },
+  topActionRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginBottom: 1,
+  },
+  addEventButton: {
+    minHeight: 44,
+    paddingHorizontal: 15,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 9,
+    elevation: 4,
+  },
+  addEventButtonPressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
+  addEventIcon: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 21,
+  },
+  addEventText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  sectionTitle: { fontWeight: "800", color: colors.text },
   wrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -736,26 +754,26 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: "#94a3b8",
-    backgroundColor: "#fff",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 18,
     marginBottom: 3,
   },
-  chipText: { color: "#0f172a", fontWeight: "500" },
-  activeChip: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
+  chipText: { color: colors.text, fontWeight: "600" },
+  activeChip: { backgroundColor: colors.primary, borderColor: colors.primary },
   activeChipText: { color: "#fff", fontWeight: "700" },
   modeRow: {
     flexDirection: "row",
-    backgroundColor: "#e2e8f0",
-    borderRadius: 10,
-    padding: 3,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    padding: 4,
   },
-  modeButton: { flex: 1, padding: 9, alignItems: "center", borderRadius: 8 },
-  activeMode: { backgroundColor: "#2563eb" },
-  modeText: { color: "#334155", fontWeight: "600" },
-  activeModeText: { color: "#fff", fontWeight: "700" },
+  modeButton: { flex: 1, padding: 10, alignItems: "center", borderRadius: 11 },
+  activeMode: { backgroundColor: colors.surface, ...cardShadow },
+  modeText: { color: colors.textSoft, fontWeight: "700" },
+  activeModeText: { color: colors.primary, fontWeight: "800" },
   calendarHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -765,96 +783,99 @@ const styles = StyleSheet.create({
   calendarTitle: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#0f172a",
+    color: colors.text,
     textAlign: "center",
   },
-  todayLabel: { color: "#2563eb", fontWeight: "600", marginTop: 3 },
+  todayLabel: { color: colors.primary, fontWeight: "700", marginTop: 3 },
   weekHeader: {
     flexDirection: "row",
-    backgroundColor: "#e2e8f0",
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
   },
   weekLabel: {
     width: "14.2857%",
     textAlign: "center",
     paddingVertical: 7,
-    color: "#475569",
+    color: colors.textSoft,
     fontWeight: "700",
   },
-  sunday: { color: "#dc2626" },
+  sunday: { color: colors.danger },
   calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
   dayCell: {
     width: "14.2857%",
     minHeight: 54,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 0.5,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
   },
   emptyDay: {
     width: "14.2857%",
     minHeight: 54,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#FAFBFE",
     borderWidth: 0.5,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
   },
   singleDayCell: { width: "100%", minHeight: 68, borderRadius: 8 },
-  selectedDay: { backgroundColor: "#2563eb" },
-  todayCell: { borderWidth: 2, borderColor: "#0ea5e9" },
-  dayNumber: { color: "#0f172a" },
+  selectedDay: { backgroundColor: colors.primary },
+  todayCell: { borderWidth: 2, borderColor: colors.accent },
+  dayNumber: { color: colors.text, fontWeight: "500" },
   selectedDayText: { color: "#fff", fontWeight: "800" },
   dotRow: { flexDirection: "row", height: 13 },
-  dot: { color: "#2563eb", fontSize: 10, marginHorizontal: 1 },
-  eventDot: { color: "#16a34a" },
-  overdueDot: { color: "#dc2626" },
+  dot: { color: colors.primary, fontSize: 10, marginHorizontal: 1 },
+  eventDot: { color: colors.accent },
+  overdueDot: { color: colors.danger },
   legend: { flexDirection: "row", gap: 14 },
-  legendTask: { color: "#2563eb", fontSize: 12 },
-  legendEvent: { color: "#16a34a", fontSize: 12 },
+  legendTask: { color: colors.primary, fontSize: 12, fontWeight: "600" },
+  legendEvent: { color: colors.accent, fontSize: 12, fontWeight: "600" },
   selectedTitle: {
     fontSize: 19,
     fontWeight: "800",
-    color: "#0f172a",
+    color: colors.text,
     marginTop: 4,
   },
   emptyAgenda: {
     padding: 16,
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   card: {
     padding: 12,
-    backgroundColor: "#fff",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 17,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    gap: 6,
+    borderColor: colors.border,
+    gap: 7,
+    ...cardShadow,
   },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  cardTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
   badgeRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   taskBadge: {
-    backgroundColor: "#dbeafe",
-    color: "#1d4ed8",
+    backgroundColor: colors.primarySoft,
+    color: colors.primaryDark,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 7,
     fontSize: 10,
     fontWeight: "800",
   },
   eventBadge: {
-    backgroundColor: "#dcfce7",
-    color: "#15803d",
+    backgroundColor: colors.accentSoft,
+    color: "#0B7A6D",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 7,
     fontSize: 10,
     fontWeight: "800",
   },
-  projectLabel: { color: "#64748b", fontSize: 12 },
-  note: { color: "#334155" },
-  muted: { color: "#64748b", fontSize: 12 },
+  projectLabel: { color: colors.textSoft, fontSize: 12 },
+  note: { color: colors.text },
+  muted: { color: colors.textSoft, fontSize: 12, lineHeight: 18 },
   modalBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
@@ -863,7 +884,7 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     height: "94%",
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.background,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     overflow: "hidden",
@@ -872,7 +893,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "#cbd5e1",
+    backgroundColor: colors.border,
     alignSelf: "center",
     marginTop: 8,
   },
@@ -880,32 +901,32 @@ const styles = StyleSheet.create({
     minHeight: 64,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
   },
   modalHeading: { flex: 1 },
-  editorTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
-  modalSubtitle: { color: "#64748b", marginTop: 2 },
+  editorTitle: { fontSize: 20, fontWeight: "900", color: colors.text },
+  modalSubtitle: { color: colors.textSoft, marginTop: 2 },
   closeButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.surfaceMuted,
   },
-  closeButtonText: { color: "#334155", fontSize: 30, lineHeight: 32 },
+  closeButtonText: { color: colors.text, fontSize: 30, lineHeight: 32 },
   editorErrorBox: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: colors.dangerSoft,
     borderBottomWidth: 1,
     borderBottomColor: "#fecaca",
     paddingHorizontal: 16,
     paddingVertical: 9,
   },
-  editorError: { color: "#991b1b", fontWeight: "600" },
+  editorError: { color: "#A52B38", fontWeight: "600" },
   modalScroll: { flex: 1 },
   modalContent: { padding: 16, paddingBottom: 28, gap: 12 },
   modalFooter: {
@@ -914,50 +935,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 11,
     paddingBottom: 14,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: colors.border,
   },
   modalAction: {
     flex: 1,
     minHeight: 46,
-    borderRadius: 9,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
   },
   modalCancelAction: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#2563eb",
+    borderColor: colors.primary,
   },
-  modalSaveAction: { backgroundColor: "#2563eb" },
-  modalCancelText: { color: "#1d4ed8", fontWeight: "700" },
+  modalSaveAction: { backgroundColor: colors.primary },
+  modalCancelText: { color: colors.primary, fontWeight: "700" },
   modalSaveText: { color: "#fff", fontWeight: "700" },
-  fieldLabel: { fontWeight: "700", color: "#334155", marginTop: 2 },
+  fieldLabel: { fontWeight: "800", color: colors.text, marginTop: 2 },
   input: {
     borderWidth: 1,
-    borderColor: "#94a3b8",
-    backgroundColor: "#fff",
-    color: "#0f172a",
-    borderRadius: 8,
-    padding: 10,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    borderRadius: 13,
+    padding: 12,
     fontSize: 15,
   },
   singleChip: { alignSelf: "flex-start" },
   button: {
-    backgroundColor: "#2563eb",
+    backgroundColor: colors.primary,
     paddingHorizontal: 11,
     paddingVertical: 9,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 3,
   },
   buttonText: { color: "#fff", fontWeight: "700" },
   secondaryButton: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: "#2563eb",
+    borderColor: "#D9DCFF",
   },
-  secondaryButtonText: { color: "#1d4ed8" },
+  secondaryButtonText: { color: colors.primaryDark },
   disabled: { opacity: 0.4 },
 });

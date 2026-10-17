@@ -2,7 +2,12 @@ import type { Express } from "express";
 import { Types, type ClientSession } from "mongoose";
 import { z } from "zod";
 import { Discussion, Notification, Project, Task } from "./models.ts";
-import { accessibleProjectIds, HttpError, idOf, projectAccess } from "./projectAccess.ts";
+import {
+  accessibleProjectIds,
+  HttpError,
+  idOf,
+  projectAccess,
+} from "./projectAccess.ts";
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 export interface NotificationInput {
@@ -91,24 +96,37 @@ export async function notifyProject(
 
 export function installNotificationRoutes(app: Express) {
   app.get("/notifications", async (req, res) => {
-    const { limit } = z.object({
-      limit: z.coerce.number().int().min(1).max(100).default(50),
-    }).strict().parse(req.query);
+    const { limit } = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .strict()
+      .parse(req.query);
     const projects = await accessibleProjectIds(req.userId!);
     const items = await Notification.find({
       user: req.userId,
       project: { $in: projects },
-    }).sort({ createdAt: -1, _id: -1 }).limit(limit)
-      .populate("actor", "name email").populate("project", "name")
+    })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .populate("actor", "name email")
+      .populate("project", "name")
       .select("-dedupeKey -__v");
     // Hiding a post also hides its old notification previews from regular members.
-    const postIds = items.filter((item) =>
-      ["discussion_created", "comment_created"].includes(item.type) &&
-      objectId.safeParse(item.entityId).success,
-    ).map((item) => item.entityId!);
+    const postIds = items
+      .filter(
+        (item) =>
+          ["discussion_created", "comment_created"].includes(item.type) &&
+          objectId.safeParse(item.entityId).success,
+      )
+      .map((item) => item.entityId!);
     if (!postIds.length) return res.json(items);
-    const hidden = await Discussion.find({ _id: { $in: postIds }, hidden: true })
-      .select("project author").lean();
+    const hidden = await Discussion.find({
+      _id: { $in: postIds },
+      hidden: true,
+    })
+      .select("project author")
+      .lean();
     const blocked = new Set<string>();
     const moderators = new Map<string, boolean>();
     for (const post of hidden) {
@@ -124,17 +142,28 @@ export function installNotificationRoutes(app: Express) {
   });
   app.patch("/notifications/read-all", async (req, res) => {
     const projects = await accessibleProjectIds(req.userId!);
-    await Notification.updateMany({
-      user: req.userId, project: { $in: projects }, readAt: null,
-    }, { $set: { readAt: new Date() } });
+    await Notification.updateMany(
+      {
+        user: req.userId,
+        project: { $in: projects },
+        readAt: null,
+      },
+      { $set: { readAt: new Date() } },
+    );
     return res.json({ ok: true });
   });
   app.patch("/notifications/:notificationId/read", async (req, res) => {
     const id = objectId.parse(req.params.notificationId);
     const projects = await accessibleProjectIds(req.userId!);
-    const item = await Notification.findOneAndUpdate({
-      _id: id, user: req.userId, project: { $in: projects },
-    }, { $set: { readAt: new Date() } }, { new: true }).select("-dedupeKey -__v");
+    const item = await Notification.findOneAndUpdate(
+      {
+        _id: id,
+        user: req.userId,
+        project: { $in: projects },
+      },
+      { $set: { readAt: new Date() } },
+      { new: true },
+    ).select("-dedupeKey -__v");
     if (!item) return res.sendStatus(404);
     return res.json(item);
   });
@@ -143,9 +172,12 @@ export function installNotificationRoutes(app: Express) {
 /** Durable inbox only; Android's local notifications remain a separate mechanism. */
 export async function runDeadlineNotifications(now = new Date()) {
   const tasks = await Task.find({
-    assignee: { $ne: null }, status: { $ne: "done" },
+    assignee: { $ne: null },
+    status: { $ne: "done" },
     dueAt: { $gt: now, $lte: new Date(+now + 86400000) },
-  }).select("project assignee title dueAt").lean();
+  })
+    .select("project assignee title dueAt")
+    .lean();
   for (const task of tasks) {
     if (!task.assignee || !task.dueAt) continue;
     let access;
@@ -153,13 +185,16 @@ export async function runDeadlineNotifications(now = new Date()) {
       access = await projectAccess(String(task.project), String(task.assignee));
     } catch (error) {
       // Removed members and missing projects do not receive reminder metadata.
-      if (error instanceof HttpError && [403, 404].includes(error.status)) continue;
+      if (error instanceof HttpError && [403, 404].includes(error.status))
+        continue;
       throw error;
     }
     if (access.archived) continue;
     await emitNotification({
-      projectId: String(task.project), recipientIds: [String(task.assignee)],
-      type: "task_deadline", title: `Task sắp đến hạn: ${task.title}`,
+      projectId: String(task.project),
+      recipientIds: [String(task.assignee)],
+      type: "task_deadline",
+      title: `Task sắp đến hạn: ${task.title}`,
       entityId: String(task._id),
       dedupeKey: `deadline:${task._id}:${task.dueAt.toISOString()}`,
     });
@@ -172,11 +207,17 @@ export function startDeadlineNotifications(intervalMs = 60000) {
   const tick = async () => {
     if (busy) return;
     busy = true;
-    try { await runDeadlineNotifications(); }
-    catch (error) { console.error("[notifications] deadline scan failed", error); }
-    finally { busy = false; }
+    try {
+      await runDeadlineNotifications();
+    } catch (error) {
+      console.error("[notifications] deadline scan failed", error);
+    } finally {
+      busy = false;
+    }
   };
-  const timer = setInterval(() => { void tick(); }, intervalMs);
+  const timer = setInterval(() => {
+    void tick();
+  }, intervalMs);
   timer.unref();
   void tick();
   return () => clearInterval(timer);

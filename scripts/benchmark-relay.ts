@@ -9,12 +9,10 @@ const peers = [`bench-a-${suffix}`, `bench-b-${suffix}`];
 async function register(peerId: string) {
   const signal = io(signalUrl);
   await new Promise<void>((resolve) => signal.on("connect", resolve));
-  const registered = await signal
-    .timeout(4000)
-    .emitWithAck("peer:register", {
-      peerId,
-      identityProof: randomUUID() + randomUUID(),
-    });
+  const registered = await signal.timeout(4000).emitWithAck("peer:register", {
+    peerId,
+    identityProof: randomUUID() + randomUUID(),
+  });
   if (!registered.ok) throw new Error(registered.error);
   const relay = io(relayUrl, { auth: { token: registered.token } });
   await new Promise<void>((resolve) => relay.on("connect", resolve));
@@ -32,20 +30,18 @@ for (let i = 0; i < 100; i++) {
     pending.set(messageId, resolve),
   );
   const start = performance.now();
-  const result = await a.relay
-    .timeout(4000)
-    .emitWithAck("relay:send", {
-      messageId,
-      sessionId: randomUUID(),
-      senderId: peers[0],
-      receiverId: peers[1],
-      type: "text",
-      timestamp: Date.now(),
-      body: `benchmark ${i}`,
-      mode: "RELAY",
-      attempt: 1,
-      sequence: i,
-    });
+  const result = await a.relay.timeout(4000).emitWithAck("relay:send", {
+    messageId,
+    sessionId: randomUUID(),
+    senderId: peers[0],
+    receiverId: peers[1],
+    type: "text",
+    timestamp: Date.now(),
+    body: `benchmark ${i}`,
+    mode: "RELAY",
+    attempt: 1,
+    sequence: i,
+  });
   if (!result.ok) throw new Error(result.error);
   await Promise.race([
     delivered,

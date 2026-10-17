@@ -21,7 +21,9 @@ async function db() {
       "PRAGMA table_info(messages)",
     );
     if (!messageColumns.some((column) => column.name === "group_id"))
-      await connection.execAsync("ALTER TABLE messages ADD COLUMN group_id TEXT");
+      await connection.execAsync(
+        "ALTER TABLE messages ADD COLUMN group_id TEXT",
+      );
     const groupIdMigration = "messages-group-id-v1";
     const migrationComplete = await connection.getFirstAsync(
       "SELECT 1 FROM storage_migrations WHERE name=?",
@@ -165,9 +167,13 @@ export class MobileStore implements DirectChatStore {
       );
   }
 }
-export type ReminderOffset = 604800000 | 86400000 | 3600000;
+export type ReminderOffset =
+  604800000 | 86400000 | 3600000 | 1800000 | 300000 | 0;
 export const REMINDER_CHANNEL_ID = "planner-reminders";
-const reminderOffsets = new Set<number>([604800000, 86400000, 3600000]);
+export const REMINDER_OFFSETS: readonly ReminderOffset[] = [
+  604800000, 86400000, 3600000, 1800000, 300000, 0,
+];
+const reminderOffsets = new Set<number>(REMINDER_OFFSETS);
 const notificationIds = (value?: string) => {
   if (!value) return [];
   try {

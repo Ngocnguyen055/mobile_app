@@ -27,6 +27,14 @@ describe("protocol validation", () => {
     expect(parseMessage({ ...base(), groupId }).groupId).toBe(groupId);
     expect(() => parseMessage({ ...base(), groupId: "" })).toThrow();
     expect(() => parseMessage({ ...base(), groupId: "not-a-uuid" })).toThrow();
-    expect(parseMessage({ ...base(), type: "ack", groupId: null, ackFor: randomUUID(), body: "" }).groupId).toBeNull();
+    expect(
+      parseMessage({
+        ...base(),
+        type: "ack",
+        groupId: null,
+        ackFor: randomUUID(),
+        body: "",
+      }).groupId,
+    ).toBeNull();
   });
 });

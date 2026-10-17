@@ -10,16 +10,16 @@ Vai trò nằm trong collection `project_members`, khóa duy nhất `(project, u
 
 Mục **Thành viên** luôn xếp Giám đốc trước, tiếp theo Trưởng phòng, cuối cùng Nhân viên; mỗi nhóm xếp theo tên A–Z với quy tắc tiếng Việt. Ở dự án tổng, người quản lý ít nhất một dự án con được hiển thị là Trưởng phòng. API trả `childManagerIds` chỉ để hiển thị danh bạ nhất quán, không cấp quyền quản lý dự án tổng hoặc làm lộ nội dung dự án con ngoài quyền.
 
-| Thao tác trong dự án phân cấp | Giám đốc | Trưởng phòng | Nhân viên |
-| --- | --- | --- | --- |
-| Thêm / xóa thành viên | Tổng và mọi dự án con | Dự án con mình quản lý; chỉ chọn người thuộc tổng | Không |
-| Bổ nhiệm / thay Trưởng phòng, tạo dự án con | Có | Không | Không |
-| Tạo / sửa / xóa task và sửa sự kiện dự án | Mọi phạm vi | Dự án con mình quản lý | Không |
-| Cập nhật trạng thái task | Mọi task | Mọi task trong dự án quản lý; task của mình trong dự án khác | Chỉ task được giao cho mình |
-| Đọc task / tiến độ / thảo luận / tệp | Tổng và mọi dự án con | Tổng và các dự án con mình tham gia | Tổng và các dự án con mình tham gia |
-| Lưu trữ / khôi phục, sửa thông tin và nguồn lực | Tổng và mọi dự án con | Dự án con mình quản lý | Không |
-| Sửa nội dung bài / bình luận | Chỉ nội dung của mình | Chỉ nội dung của mình | Chỉ nội dung của mình |
-| Ẩn / xóa bài, xóa bình luận vi phạm | Mọi phạm vi | Dự án con mình quản lý | Chỉ xóa nội dung của mình |
+| Thao tác trong dự án phân cấp                   | Giám đốc              | Trưởng phòng                                                 | Nhân viên                           |
+| ----------------------------------------------- | --------------------- | ------------------------------------------------------------ | ----------------------------------- |
+| Thêm / xóa thành viên                           | Tổng và mọi dự án con | Dự án con mình quản lý; chỉ chọn người thuộc tổng            | Không                               |
+| Bổ nhiệm / thay Trưởng phòng, tạo dự án con     | Có                    | Không                                                        | Không                               |
+| Tạo / sửa / xóa task và sửa sự kiện dự án       | Mọi phạm vi           | Dự án con mình quản lý                                       | Không                               |
+| Cập nhật trạng thái task                        | Mọi task              | Mọi task trong dự án quản lý; task của mình trong dự án khác | Chỉ task được giao cho mình         |
+| Đọc task / tiến độ / thảo luận / tệp            | Tổng và mọi dự án con | Tổng và các dự án con mình tham gia                          | Tổng và các dự án con mình tham gia |
+| Lưu trữ / khôi phục, sửa thông tin và nguồn lực | Tổng và mọi dự án con | Dự án con mình quản lý                                       | Không                               |
+| Sửa nội dung bài / bình luận                    | Chỉ nội dung của mình | Chỉ nội dung của mình                                        | Chỉ nội dung của mình               |
+| Ẩn / xóa bài, xóa bình luận vi phạm             | Mọi phạm vi           | Dự án con mình quản lý                                       | Chỉ xóa nội dung của mình           |
 
 Ở dự án độc lập, mọi thành viên tiếp tục quản lý task chung; chủ dự án quản lý thành viên, nguồn lực và lưu trữ. Quyền luôn được kiểm tra lại tại API; việc ẩn nút trên Android chỉ giúp giao diện phù hợp với vai trò.
 
@@ -61,26 +61,26 @@ Collection `notifications` là **hộp thư trong ứng dụng**, chưa có push
 
 Các endpoint cần JWT. `version` nên gửi khi sửa dự án / membership / nguồn lực; Android gửi phiên bản đã đọc. Task PATCH cần `version`; sửa bài và bình luận dùng `revision` để phát hiện dữ liệu cũ. Payload không được chứa trường ngoài schema.
 
-| Method / URL | Payload hoặc kết quả |
-| --- | --- |
-| `POST /projects` | `{name, description?, kind: "independent" \| "hierarchical"}` |
-| `GET /projects`, `GET /projects/:id` | Vai trò, quyền, thành viên; chi tiết tổng thêm `children` đã lọc quyền |
-| `POST /projects/:id/children` | `{name, managerId, memberIds?, version?}` |
-| `POST /projects/:id/members` | `{email, version?}` hoặc `{userId, version?}` |
-| `PUT /projects/:id/manager` | `{userId, version?}` |
-| `DELETE /projects/:id/members/:userId` | `{version?, reassignTo?: id \| null, replacementManagers?: [{projectId,userId}]}` |
-| `PATCH /projects/:id` | `{name?, description?, version?}` |
-| `PATCH /projects/:id/archive` | `{archived, restoreChildren?, version?}` |
-| `PATCH /projects/:id/resources` | Bốn số giờ / ngân sách + `version?` |
-| `GET /projects/:id/progress` | Tổng, `byProject`, `byPerson[].tasks` có `effectiveStatus` |
-| `/projects/:id/discussions` | GET danh sách, POST JSON hoặc multipart `title / body / files` |
-| `/projects/:id/discussions/:postId` | PATCH nội dung của tác giả với `revision`; DELETE tác giả hoặc moderator |
-| `PATCH /projects/:id/discussions/:postId/visibility` | `{hidden: boolean}` dành cho moderator |
-| `/projects/:id/discussions/:postId/comments` | GET / POST `{body}` |
-| `/projects/:id/discussions/:postId/comments/:commentId` | PATCH `{body,revision}` hoặc DELETE |
-| `GET /projects/:id/documents/:documentId` | Tệp sau kiểm tra quyền dự án và bài |
-| `GET /notifications?limit=50` | Hộp thư của chính người đăng nhập; tối đa 100 mục |
-| `PATCH /notifications/:id/read`, `/notifications/read-all` | Đánh dấu đã đọc |
+| Method / URL                                               | Payload hoặc kết quả                                                              |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `POST /projects`                                           | `{name, description?, kind: "independent" \| "hierarchical"}`                     |
+| `GET /projects`, `GET /projects/:id`                       | Vai trò, quyền, thành viên; chi tiết tổng thêm `children` đã lọc quyền            |
+| `POST /projects/:id/children`                              | `{name, managerId, memberIds?, version?}`                                         |
+| `POST /projects/:id/members`                               | `{email, version?}` hoặc `{userId, version?}`                                     |
+| `PUT /projects/:id/manager`                                | `{userId, version?}`                                                              |
+| `DELETE /projects/:id/members/:userId`                     | `{version?, reassignTo?: id \| null, replacementManagers?: [{projectId,userId}]}` |
+| `PATCH /projects/:id`                                      | `{name?, description?, version?}`                                                 |
+| `PATCH /projects/:id/archive`                              | `{archived, restoreChildren?, version?}`                                          |
+| `PATCH /projects/:id/resources`                            | Bốn số giờ / ngân sách + `version?`                                               |
+| `GET /projects/:id/progress`                               | Tổng, `byProject`, `byPerson[].tasks` có `effectiveStatus`                        |
+| `/projects/:id/discussions`                                | GET danh sách, POST JSON hoặc multipart `title / body / files`                    |
+| `/projects/:id/discussions/:postId`                        | PATCH nội dung của tác giả với `revision`; DELETE tác giả hoặc moderator          |
+| `PATCH /projects/:id/discussions/:postId/visibility`       | `{hidden: boolean}` dành cho moderator                                            |
+| `/projects/:id/discussions/:postId/comments`               | GET / POST `{body}`                                                               |
+| `/projects/:id/discussions/:postId/comments/:commentId`    | PATCH `{body,revision}` hoặc DELETE                                               |
+| `GET /projects/:id/documents/:documentId`                  | Tệp sau kiểm tra quyền dự án và bài                                               |
+| `GET /notifications?limit=50`                              | Hộp thư của chính người đăng nhập; tối đa 100 mục                                 |
+| `PATCH /notifications/:id/read`, `/notifications/read-all` | Đánh dấu đã đọc                                                                   |
 
 Lỗi thường gặp: 400 payload sai, 403 ngoài quyền, 404 không tồn tại / nội dung không được xem, 409 version cũ hoặc thiếu người thay Trưởng phòng, 423 dự án đã lưu trữ. Khi gặp 409, tải lại trước khi sửa; không tự ghi đè thay đổi của người khác.
 

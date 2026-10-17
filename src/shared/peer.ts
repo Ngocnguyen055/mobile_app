@@ -104,7 +104,8 @@ export class PeerClient {
     const result = await this.call(this.signal, "peer:lookup", { peerId });
     if (!result.ok) throw new Error(result.error || "peer lookup failed");
     const peer = peerDiscoverySchema.parse(result.peer);
-    if (peer.peerId !== peerId) throw new Error("peer lookup identity mismatch");
+    if (peer.peerId !== peerId)
+      throw new Error("peer lookup identity mismatch");
     return peer;
   }
   private async call(
@@ -214,9 +215,11 @@ export class PeerClient {
     return result.group;
   }
   private async authorizeGroup(groupId: string, otherPeerId: string) {
-    if (!this.signal?.connected) throw new Error("group authorization unavailable");
+    if (!this.signal?.connected)
+      throw new Error("group authorization unavailable");
     const result = await this.call(this.signal, "group:authorize", {
-      groupId, otherPeerId,
+      groupId,
+      otherPeerId,
     });
     if (!result.ok || !result.group)
       throw new Error(result.error || "group access denied");
@@ -500,7 +503,8 @@ export class PeerClient {
   /** Personal conversation; DIRECT is attempted first, with RELAY fallback. */
   async sendDirect(receiverId: string, body: string): Promise<void> {
     peerIdSchema.parse(receiverId);
-    if (receiverId === this.peerId) throw new Error("cannot chat with yourself");
+    if (receiverId === this.peerId)
+      throw new Error("cannot chat with yourself");
     await this.send(receiverId, body);
   }
   async sendGroup(

@@ -22,28 +22,48 @@ try {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  assert(loginResponse.ok, "Đăng nhập kiểm thử thất bại; seed hoặc đặt CONTACTS_TEST_EMAIL/CONTACTS_TEST_PASSWORD");
-  const login = await loginResponse.json() as { token: string; user: { id: string } };
+  assert(
+    loginResponse.ok,
+    "Đăng nhập kiểm thử thất bại; seed hoặc đặt CONTACTS_TEST_EMAIL/CONTACTS_TEST_PASSWORD",
+  );
+  const login = (await loginResponse.json()) as {
+    token: string;
+    user: { id: string };
+  };
   const response = await fetch(`${url}/contacts`, {
     headers: { Authorization: `Bearer ${login.token}` },
   });
   assert.equal(response.status, 200);
-  const contacts = await response.json() as { id: string; name: string; email: string }[];
-  const projects = await Project.find({ members: login.user.id }).populate("members", "name email").lean();
+  const contacts = (await response.json()) as {
+    id: string;
+    name: string;
+    email: string;
+  }[];
+  const projects = await Project.find({ members: login.user.id })
+    .populate("members", "name email")
+    .lean();
   const expectedIds = new Set<string>();
   for (const project of projects) {
     for (const member of project.members as unknown as { _id: unknown }[]) {
-      if (member && String(member._id) !== login.user.id) expectedIds.add(String(member._id));
+      if (member && String(member._id) !== login.user.id)
+        expectedIds.add(String(member._id));
     }
   }
-  assert.deepEqual(contacts.map(contact => contact.id).sort(), [...expectedIds].sort());
+  assert.deepEqual(
+    contacts.map((contact) => contact.id).sort(),
+    [...expectedIds].sort(),
+  );
   for (const contact of contacts) {
     assert.deepEqual(Object.keys(contact).sort(), ["email", "id", "name"]);
     assert.equal(typeof contact.name, "string");
     assert.equal(typeof contact.email, "string");
   }
-  console.log(`Contacts API integration passed: JWT, shared-project directory, no self/duplicates/private fields (${contacts.length} contacts). No database writes.`);
+  console.log(
+    `Contacts API integration passed: JWT, shared-project directory, no self/duplicates/private fields (${contacts.length} contacts). No database writes.`,
+  );
 } finally {
-  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
   await mongoose.disconnect();
 }

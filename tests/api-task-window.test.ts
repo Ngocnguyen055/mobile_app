@@ -87,16 +87,37 @@ describe("task time window API", () => {
 
   it("validates a partial patch against stored dates and keeps optimistic versioning", async () => {
     const session = { transaction: true } as unknown as ClientSession;
-    const project = new Project({ _id: projectId, name: "Project", owner: userId, members: [userId] });
-    vi.spyOn(projectAccess, "withWritableProject").mockImplementation(async (_id, _user, action) => action({
-      project, root: project, role: "OWNER", archived: false,
-      permissions: projectAccess.permissionsForProject("independent", false, "OWNER"),
-    }, session));
+    const project = new Project({
+      _id: projectId,
+      name: "Project",
+      owner: userId,
+      members: [userId],
+    });
+    vi.spyOn(projectAccess, "withWritableProject").mockImplementation(
+      async (_id, _user, action) =>
+        action(
+          {
+            project,
+            root: project,
+            role: "OWNER",
+            archived: false,
+            permissions: projectAccess.permissionsForProject(
+              "independent",
+              false,
+              "OWNER",
+            ),
+          },
+          session,
+        ),
+    );
     vi.spyOn(notifications, "emitNotification").mockResolvedValue(undefined);
-    const find = vi.spyOn(Task, "findOne").mockReturnValue({ session: () => Promise.resolve({
-      startsAt: new Date("2026-10-01T08:00:00.000Z"),
-      dueAt: new Date("2026-10-01T10:00:00.000Z"),
-    }) } as never);
+    const find = vi.spyOn(Task, "findOne").mockReturnValue({
+      session: () =>
+        Promise.resolve({
+          startsAt: new Date("2026-10-01T08:00:00.000Z"),
+          dueAt: new Date("2026-10-01T10:00:00.000Z"),
+        }),
+    } as never);
     const update = vi.spyOn(Task, "findOneAndUpdate").mockResolvedValue({
       _id: taskId,
       project: projectId,

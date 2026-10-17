@@ -12,6 +12,7 @@ import {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { formatViDate, formatViDateTime, parseViDateTime } from "./calendar.ts";
+import { colors } from "./theme.ts";
 
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
@@ -121,20 +122,20 @@ export default function NativeDateTimeField({
 
 const styles = StyleSheet.create({
   container: { gap: 5 },
-  label: { color: "#334155", fontSize: 13, fontWeight: "700" },
+  label: { color: colors.text, fontSize: 13, fontWeight: "800" },
   field: {
     minHeight: 46,
     borderWidth: 1,
-    borderColor: "#94a3b8",
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    paddingHorizontal: 11,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 13,
+    paddingHorizontal: 13,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  value: { color: "#0f172a", fontSize: 15 },
-  placeholder: { color: "#64748b" },
-  icon: { color: "#2563eb", fontSize: 22, fontWeight: "700" },
+  value: { color: colors.text, fontSize: 15 },
+  placeholder: { color: colors.textSoft },
+  icon: { color: colors.primary, fontSize: 22, fontWeight: "700" },
   disabled: { opacity: 0.5 },
 });

@@ -103,58 +103,103 @@ describe("peer delivery across real Socket.IO processes", () => {
     });
     const signal = createSignaling();
     const signalUrl = await listen(signal);
-    const relay = createRelay(undefined, async (id) => signal.groups.get(id) || null);
+    const relay = createRelay(
+      undefined,
+      async (id) => signal.groups.get(id) || null,
+    );
     const relayUrl = await listen(relay);
-    const stores = ["peer-a", "peer-b", "peer-c"].map(id => new WebStore(id));
+    const stores = ["peer-a", "peer-b", "peer-c"].map((id) => new WebStore(id));
     const logs: string[] = [];
     for (const [index, id] of ["peer-a", "peer-b", "peer-c"].entries()) {
       const client = new PeerClient({
-        peerId: id, identityProof: randomUUID() + randomUUID(), signalUrl, relayUrl,
-        rtc: DeadRTC as unknown as PeerConfig["rtc"], store: stores[index],
-        forceRelay: true, ackTimeoutMs: 100,
-        onEvent: event => { if (event.kind === "log") logs.push(event.text || ""); },
+        peerId: id,
+        identityProof: randomUUID() + randomUUID(),
+        signalUrl,
+        relayUrl,
+        rtc: DeadRTC as unknown as PeerConfig["rtc"],
+        store: stores[index],
+        forceRelay: true,
+        ackTimeoutMs: 100,
+        onEvent: (event) => {
+          if (event.kind === "log") logs.push(event.text || "");
+        },
       });
       clients.push(client);
       await client.connect();
     }
-    await waitFor(() => logs.filter(line => line.includes("relay connected")).length === 3);
+    await waitFor(
+      () =>
+        logs.filter((line) => line.includes("relay connected")).length === 3,
+    );
     const personal = new DirectChatService(clients[0], stores[0]);
     expect((await personal.open("peer-b")).peer.online).toBe(true);
     await personal.send("peer-b", "personal A to B");
     await clients[1].send("peer-a", "personal B to A with null group", null);
     const group = await clients[0].createGroup(["peer-b", "peer-c"]);
-    await waitFor(() => clients.every(client => client.getGroups().some(row => row.id === group.id)));
+    await waitFor(() =>
+      clients.every((client) =>
+        client.getGroups().some((row) => row.id === group.id),
+      ),
+    );
     const [, groupResult] = await Promise.all([
       personal.send("peer-b", "personal while group sends"),
       clients[0].sendGroup(group.id, "group at the same time"),
     ]);
-    expect(groupResult).toEqual({ "peer-b": "fulfilled", "peer-c": "fulfilled" });
+    expect(groupResult).toEqual({
+      "peer-b": "fulfilled",
+      "peer-c": "fulfilled",
+    });
     const history = await personal.history("peer-b");
-    expect(new Set(history.map(row => row.message.body))).toEqual(new Set([
-      "personal A to B", "personal B to A with null group", "personal while group sends",
-    ]));
-    expect(history.find(row => row.message.body === "personal A to B")?.status).toBe("delivered");
-    expect(history.find(row => row.message.body === "personal B to A with null group")?.status).toBe("received");
-    expect(history.find(row => row.message.body === "personal while group sends")?.status).toBe("delivered");
-    expect(history.map(row => row.message.timestamp)).toEqual(
-      [...history].map(row => row.message.timestamp).sort((a, b) => a - b),
+    expect(new Set(history.map((row) => row.message.body))).toEqual(
+      new Set([
+        "personal A to B",
+        "personal B to A with null group",
+        "personal while group sends",
+      ]),
     );
-    expect(history.every(row => row.message.groupId == null)).toBe(true);
+    expect(
+      history.find((row) => row.message.body === "personal A to B")?.status,
+    ).toBe("delivered");
+    expect(
+      history.find(
+        (row) => row.message.body === "personal B to A with null group",
+      )?.status,
+    ).toBe("received");
+    expect(
+      history.find((row) => row.message.body === "personal while group sends")
+        ?.status,
+    ).toBe("delivered");
+    expect(history.map((row) => row.message.timestamp)).toEqual(
+      [...history].map((row) => row.message.timestamp).sort((a, b) => a - b),
+    );
+    expect(history.every((row) => row.message.groupId == null)).toBe(true);
     expect(await new WebStore("peer-a").listDirect("peer-b")).toEqual(history);
     expect(await stores[2].listDirect("peer-a")).toEqual([]);
-    expect((await stores[0].list()).filter(row => row.message.groupId === group.id)).toHaveLength(2);
-    expect((await stores[2].list()).map(row => row.message.body)).toEqual(["group at the same time"]);
+    expect(
+      (await stores[0].list()).filter(
+        (row) => row.message.groupId === group.id,
+      ),
+    ).toHaveLength(2);
+    expect((await stores[2].list()).map((row) => row.message.body)).toEqual([
+      "group at the same time",
+    ]);
     clients[1].close();
     await waitFor(() => !signal.peers.has("peer-b"));
     expect((await personal.open("peer-b")).peer.online).toBe(false);
     expect(await personal.history("peer-b")).toEqual(history);
-    await expect(personal.send("peer-b", "cannot deliver offline")).rejects.toThrow("delivery failed");
-    const failed = (await personal.history("peer-b")).find(row => row.message.body === "cannot deliver offline");
+    await expect(
+      personal.send("peer-b", "cannot deliver offline"),
+    ).rejects.toThrow("delivery failed");
+    const failed = (await personal.history("peer-b")).find(
+      (row) => row.message.body === "cannot deliver offline",
+    );
     expect(failed?.status).toBe("failed");
     await expect(personal.send("peer-a", "self")).rejects.toThrow("yourself");
     await expect(clients[0].lookupPeer("../invalid")).rejects.toThrow();
     clients[0].close();
-    await expect(clients[0].lookupPeer("peer-c")).rejects.toThrow("signaling unavailable");
+    await expect(clients[0].lookupPeer("peer-c")).rejects.toThrow(
+      "signaling unavailable",
+    );
   });
   it("times out a simulated dead DataChannel, falls back to RELAY, gets receiver ACK, and deduplicates", async () => {
     const signal = createSignaling();

@@ -6,12 +6,11 @@ import jwt from "jsonwebtoken";
 import { Server, type Socket } from "socket.io";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
+import { peerIdSchema, type Group, type PeerDiscovery } from "@ds01/shared";
 import {
-  peerIdSchema,
-  type Group,
-  type PeerDiscovery,
-} from "@ds01/shared";
-import { httpProjectDirectory, type ProjectDirectory } from "./projectDirectory.ts";
+  httpProjectDirectory,
+  type ProjectDirectory,
+} from "./projectDirectory.ts";
 
 loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 if (
@@ -73,7 +72,9 @@ export function createSignaling(
       const group = await currentGroup(req.params.id);
       return group ? res.json(group) : res.sendStatus(404);
     } catch {
-      return res.status(503).json({ error: "project authorization unavailable" });
+      return res
+        .status(503)
+        .json({ error: "project authorization unavailable" });
     }
   });
   const publishPresence = () =>
@@ -119,9 +120,12 @@ export function createSignaling(
       void socket.join("registered-peers");
       if (/^[a-f\d]{24}$/i.test(peerId)) {
         try {
-          for (const group of await directory.forPeer(peerId)) publishGroup(group);
+          for (const group of await directory.forPeer(peerId))
+            publishGroup(group);
         } catch {
-          console.warn("[signal] project directory unavailable; project chat will fail closed");
+          console.warn(
+            "[signal] project directory unavailable; project chat will fail closed",
+          );
         }
       }
       const token = jwt.sign({ sub: peerId }, PEER_SECRET, {
@@ -165,16 +169,29 @@ export function createSignaling(
       const actor = peerFor(socket);
       if (!actor || peers.get(actor)?.socket.id !== socket.id)
         return reply({ ok: false, error: "registration required" });
-      const value = input as { groupId?: unknown; otherPeerId?: unknown } | null;
-      if (!value || typeof value.groupId !== "string" ||
+      const value = input as {
+        groupId?: unknown;
+        otherPeerId?: unknown;
+      } | null;
+      if (
+        !value ||
+        typeof value.groupId !== "string" ||
         !/^[\da-f-]{36}$/i.test(value.groupId) ||
-        !peerIdSchema.safeParse(value.otherPeerId).success)
+        !peerIdSchema.safeParse(value.otherPeerId).success
+      )
         return reply({ ok: false, error: "invalid group authorization" });
       try {
         const group = await currentGroup(value.groupId);
-        if (!group || group.archived || !group.members.includes(actor) ||
-          !group.members.includes(String(value.otherPeerId)))
-          return reply({ ok: false, error: "group access denied or project archived" });
+        if (
+          !group ||
+          group.archived ||
+          !group.members.includes(actor) ||
+          !group.members.includes(String(value.otherPeerId))
+        )
+          return reply({
+            ok: false,
+            error: "group access denied or project archived",
+          });
         reply({ ok: true, group });
       } catch {
         reply({ ok: false, error: "project authorization unavailable" });
@@ -293,7 +310,10 @@ export function createSignaling(
       >;
       const group = groups.get(String(groupId));
       if (group?.projectId)
-        return reply?.({ ok: false, error: "manage project members through REST API" });
+        return reply?.({
+          ok: false,
+          error: "manage project members through REST API",
+        });
       if (
         !actor ||
         !group ||
@@ -346,9 +366,12 @@ export function createSignaling(
     if (synchronizing) return;
     synchronizing = true;
     try {
-      const accountIds = [...peers.keys()].filter((id) => /^[a-f\d]{24}$/i.test(id));
+      const accountIds = [...peers.keys()].filter((id) =>
+        /^[a-f\d]{24}$/i.test(id),
+      );
       for (const peerId of accountIds)
-        for (const group of await directory.forPeer(peerId)) publishGroup(group);
+        for (const group of await directory.forPeer(peerId))
+          publishGroup(group);
       for (const group of [...groups.values()].filter((g) => g.projectId)) {
         const latest = await directory.group(group.id);
         if (latest) publishGroup(latest);

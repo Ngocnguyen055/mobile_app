@@ -15,8 +15,16 @@ const projectSchema = new Schema(
     description: { type: String, default: "" },
     owner: { type: Schema.Types.ObjectId, ref: "User", required: true },
     members: [{ type: Schema.Types.ObjectId, ref: "User" }],
-    kind: { type: String, enum: ["independent", "hierarchical"], default: "independent" },
-    parentProject: { type: Schema.Types.ObjectId, ref: "Project", default: null },
+    kind: {
+      type: String,
+      enum: ["independent", "hierarchical"],
+      default: "independent",
+    },
+    parentProject: {
+      type: Schema.Types.ObjectId,
+      ref: "Project",
+      default: null,
+    },
     manager: { type: Schema.Types.ObjectId, ref: "User", default: null },
     archived: { type: Boolean, default: false },
     version: { type: Number, default: 1 },
@@ -37,7 +45,11 @@ const projectMemberSchema = new Schema(
   {
     project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    role: { type: String, enum: ["OWNER", "MEMBER", "DIRECTOR", "MANAGER", "EMPLOYEE"], required: true },
+    role: {
+      type: String,
+      enum: ["OWNER", "MEMBER", "DIRECTOR", "MANAGER", "EMPLOYEE"],
+      required: true,
+    },
   },
   { timestamps: true, collection: "project_members" },
 );
@@ -69,7 +81,12 @@ const eventSchema = new Schema(
     note: { type: String, default: "" },
     allDay: { type: Boolean, default: false },
     reminderOffsets: {
-      type: [{ type: Number, enum: [604800000, 86400000, 3600000] }],
+      type: [
+        {
+          type: Number,
+          enum: [604800000, 86400000, 3600000, 1800000, 300000, 0],
+        },
+      ],
       default: [],
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -129,10 +146,16 @@ const notificationSchema = new Schema(
   { timestamps: true, collection: "notifications" },
 );
 notificationSchema.index({ user: 1, createdAt: -1 });
-notificationSchema.index({ user: 1, dedupeKey: 1 }, { unique: true, partialFilterExpression: { dedupeKey: { $type: "string" } } });
+notificationSchema.index(
+  { user: 1, dedupeKey: 1 },
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: "string" } } },
+);
 export const User = mongoose.model("User", userSchema);
 export const Project = mongoose.model("Project", projectSchema);
-export const ProjectMember = mongoose.model("ProjectMember", projectMemberSchema);
+export const ProjectMember = mongoose.model(
+  "ProjectMember",
+  projectMemberSchema,
+);
 export const Task = mongoose.model("Task", taskSchema);
 export const Event = mongoose.model("Event", eventSchema);
 export const Discussion = mongoose.model("Discussion", discussionSchema);
