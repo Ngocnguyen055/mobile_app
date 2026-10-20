@@ -321,13 +321,23 @@ Xem `deploy/internet.env.example`, `deploy/Caddyfile.example` và `docs/architec
 
 ## Cấu trúc
 
-- `src/mobile`: Android Expo, lịch tổng hợp, SQLite chat, notifications và Google Calendar.
+- `src/mobile`: ứng dụng Android Expo. `App.tsx` chỉ ghép các controller hook với `AppRouter`; mã còn lại được chia theo trách nhiệm:
+  - `screens`: các màn hình và điều phối màn hình;
+  - `components`: UI dùng lại, chia tiếp theo miền `calendar`, `chat`, `discussion`, `projects`, `tasks` và `ui`;
+  - `hooks`: state và nghiệp vụ của ứng dụng;
+  - `services`: giao tiếp API, SQLite và Google Calendar;
+  - `domain`: các chính sách nghiệp vụ thuần, không phụ thuộc giao diện;
+  - `utils`: hàm biến đổi/tính toán dùng lại;
+  - `styles`: toàn bộ `StyleSheet` theo từng miền;
+  - `types`: kiểu dùng chung trong mobile.
 - `src/web-peer`: peer web DS01, lịch sử localStorage, log và nút ép RELAY.
 - `src/api`: REST API tài khoản/dự án/task/lịch/thảo luận/tệp/nguồn lực.
 - `src/signaling`: peer discovery, heartbeat, nhóm và SDP/ICE.
 - `src/relay`: chuyển đúng đích và ACK envelope qua Socket.IO.
 - `src/shared`: schema message và PeerClient chung.
 - `tests`, `scripts`, `deploy`, `docs`: test, seed, benchmark, cấu hình và kịch bản.
+
+Chi tiết luồng phụ thuộc của mobile nằm trong [tài liệu kiến trúc](docs/architecture.md#kiến-trúc-mã-mobile).
 
 ## Giới hạn hiện tại
 

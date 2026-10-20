@@ -7,7 +7,7 @@ Phần này mô tả API, discovery, lưu trữ và giao diện để chat giữ
 Màn hình Tin nhắn không tự tải một danh bạ. Người dùng nhập ít nhất 3 ký tự của email; client gọi `GET /users/search?email=<query>` với `Authorization: Bearer <JWT>`. API trả tối đa 20 kết quả `{ id, name, email }`, loại chính người gọi và các cặp đang chặn nhau. `id` là MongoDB user ID và cũng là Peer ID khi Android đăng ký signaling. Không trả password hash hoặc JWT.
 
 ```ts
-import { searchChatUsers } from "../src/mobile/api.ts";
+import { searchChatUsers } from "../src/mobile/services/api.ts";
 const results = await searchChatUsers("an@example");
 // Chọn một kết quả; app lưu id/name/email vào cache SQLite của tài khoản.
 ```
@@ -100,7 +100,7 @@ Web giữ nguyên key `ds01-history-v1-<Peer ID>`, lọc bằng `isDirectMessage
 
 ```ts
 import { DirectChatService } from "@ds01/shared";
-import { searchChatUsers } from "../src/mobile/api.ts";
+import { searchChatUsers } from "../src/mobile/services/api.ts";
 
 // peer và store là instance đã cấu hình trong ứng dụng.
 await peer.connect(); // Chỉ gọi một lần cho instance/phiên kết nối.

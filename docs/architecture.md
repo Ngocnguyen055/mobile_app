@@ -16,6 +16,35 @@ flowchart LR
 
 Signaling chỉ chuyển `request`, `offer`, `answer`, `ice`, đăng ký, presence và dữ liệu nhóm/quyền; không nhận chat envelope. Relay chuyển envelope khi mode `RELAY` và ghi `FORWARD messageId`. API xử lý dữ liệu Mobile và cung cấp membership/archive cho signaling, không nhận hoặc lưu chat body. Android dùng user Mongo `_id` làm Peer ID; web demo dùng ID tự đặt và secret lưu trình duyệt. JWT của API chứng thực Android ở signaling; token ngắn hạn do signaling cấp chứng thực kết nối relay.
 
+## Kiến trúc mã mobile
+
+`src/mobile/App.tsx` là composition root mỏng: khởi tạo các controller hook, nối dependency giữa chúng và truyền kết quả vào `screens/AppRouter.tsx`. Màn hình không gọi vòng ngược về `App`; chúng nhận state và callback qua props rồi ghép các component theo miền.
+
+```mermaid
+flowchart TD
+  Entry[index.ts] --> App[App.tsx\ncomposition root]
+  App --> Hooks[hooks/\nstate + business workflows]
+  App --> Router[screens/AppRouter.tsx]
+  Router --> Screens[screens/\nfeature screens]
+  Screens --> Components[components/\ncalendar, chat, discussion, projects, tasks, ui]
+  Hooks --> Services[services/\nAPI, SQLite, Google]
+  Hooks --> Domain[domain/\npure business policies]
+  Hooks --> Utils[utils/\npure helpers]
+  Screens --> Styles[styles/\nStyleSheet theo miền]
+  Components --> Styles
+  Hooks --> Types[types/\nshared mobile types]
+  Screens --> Types
+  Components --> Types
+```
+
+- `hooks/` giữ state và các workflow như xác thực, dự án, task, lịch, chat, nhắc việc và Google Sync.
+- `screens/` chịu trách nhiệm bố cục cấp màn hình; `components/` chứa các khối UI nhỏ hơn và có thể dùng lại.
+- `services/` là ranh giới I/O. `domain/` và `utils/` ưu tiên hàm thuần để có thể kiểm thử mà không cần React Native.
+- Mọi `StyleSheet.create(...)` nằm trong `styles/`; component chỉ import style cần dùng.
+- Chưa có `context/` vì state hiện được kết hợp một lần ở `App.tsx` rồi truyền qua router. Chỉ nên thêm Context khi nhiều nhánh component sâu thật sự cần cùng state; không tạo provider rỗng chỉ để đủ cấu trúc.
+
+Khi thêm chức năng mới, đặt API/storage vào `services`, quy tắc thuần vào `domain` hoặc `utils`, workflow có state vào `hooks`, và giao diện vào `screens`/`components`. Chiều phụ thuộc nên đi từ giao diện và hook xuống các lớp này, không để service import component hoặc screen.
+
 ### Vì sao chọn DataChannel + relay ứng dụng
 
 Hai máy có NAT thường không thấy địa chỉ riêng của nhau. ICE dùng STUN để tìm địa chỉ ứng viên; nếu cặp ứng viên hoạt động, DataChannel gửi trực tiếp qua kết nối WebRTC được mã hóa. Một số NAT/firewall không cho kết nối trực tiếp. TURN là relay ở tầng WebRTC/ICE, có thể giúp ICE nối được nhưng cần máy chủ TURN và băng thông riêng. Dự án **không triển khai TURN**. Khi DataChannel không mở trong 5 giây hoặc bị mất, client đổi sang relay Socket.IO do nhóm viết. Relay này đọc envelope ở tầng ứng dụng và khác TURN. Tham khảo [MDN WebRTC protocols](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols) và [DataChannel](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Using_data_channels).
@@ -38,7 +67,7 @@ Chat cá nhân có service riêng, dùng lại PeerClient của Group Chat. `GET
 
 Android mở lịch tổng hợp ngay sau đăng nhập và vẫn cung cấp lịch riêng trong từng dự án. Các helper lịch dùng `Asia/Ho_Chi_Minh`, hiển thị `dd/MM/yyyy`, căn tuần từ thứ Hai và sinh hàng tiêu đề `T2` đến `CN`. SQLite giữ ID thông báo cục bộ cho task và sự kiện. Khi deadline, thời gian sự kiện, trạng thái hoặc mốc nhắc thay đổi, app đối chiếu chữ ký dữ liệu, hủy thông báo cũ và tạo lại; khi mục bị xóa, app hủy các ID còn lưu. Đây là nhắc cục bộ, không phải push từ server.
 
-Lịch tổng hợp có ba phạm vi cố định: `all` (`Tất cả`), `personal` (`Cá nhân`) và `projects` (`Dự án`). `projects` lọc mọi mục có tham chiếu dự án, không sinh một bộ lọc riêng cho từng dự án. Chính sách thao tác cho phép tạo sự kiện ở `all` và `personal`, không cho tạo task ở lịch tổng hợp, đồng thời tắt cả hai thao tác tạo ở `projects` và ở lịch có `fixedProjectId`. Card gắn dự án chỉ điều hướng bằng `Xem / sửa` tới màn hình dự án và tab tương ứng; lịch trong dự án không phải điểm tạo mới. Các quy tắc này nằm trong `calendarPolicy.ts` để có thể kiểm thử độc lập với React Native.
+Lịch tổng hợp có ba phạm vi cố định: `all` (`Tất cả`), `personal` (`Cá nhân`) và `projects` (`Dự án`). `projects` lọc mọi mục có tham chiếu dự án, không sinh một bộ lọc riêng cho từng dự án. Chính sách thao tác cho phép tạo sự kiện ở `all` và `personal`, không cho tạo task ở lịch tổng hợp, đồng thời tắt cả hai thao tác tạo ở `projects` và ở lịch có `fixedProjectId`. Card gắn dự án chỉ điều hướng bằng `Xem / sửa` tới màn hình dự án và tab tương ứng; lịch trong dự án không phải điểm tạo mới. Các quy tắc này nằm trong `src/mobile/domain/calendarPolicy.ts` để có thể kiểm thử độc lập với React Native.
 
 Header `Hiển thị` của lịch chính và header ngữ cảnh của dự án được render ngoài `ScrollView` nội dung. Thanh dự án giữ nút quay lại, tên dự án, mục đang mở và nút `☰`; bấm nút mở Navigation Drawer dọc. Các tác vụ không còn nằm trên hàng tab ngang. Tab Tài liệu được bỏ; tải tệp mới qua bài Thảo luận và vẫn xem được tệp cũ.
 
