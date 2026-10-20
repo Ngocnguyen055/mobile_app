@@ -4,7 +4,7 @@ import {
   canSendDirect,
   directMessageStatusLabel,
   directMessagesForContact,
-} from "../src/mobile/directChatPolicy.ts";
+} from "../src/mobile/domain/directChatPolicy.ts";
 
 const CURRENT = "peer-a";
 const CONTACT = "peer-b";
@@ -30,6 +30,17 @@ function stored(
       type,
       timestamp,
       body: type === "text" ? id : "",
+      attachments:
+        type === "attachment"
+          ? [
+              {
+                id: "507f1f77bcf86cd799439011",
+                name: "anh.png",
+                mime: "image/png",
+                size: 123,
+              },
+            ]
+          : undefined,
       mode: "RELAY",
       ackFor:
         type === "ack" ? "00000000-0000-4000-8000-000000000099" : undefined,
@@ -41,7 +52,7 @@ function stored(
 }
 
 describe("mobile direct-chat policy", () => {
-  it("keeps only two-way direct text rows and orders ties deterministically", () => {
+  it("keeps direct text and attachments while excluding ACK/group/other contacts", () => {
     const later = stored(
       "00000000-0000-4000-8000-000000000002",
       CURRENT,
@@ -76,15 +87,31 @@ describe("mobile direct-chat policy", () => {
       OTHER,
       7,
     );
+    const attachment = stored(
+      "00000000-0000-4000-8000-000000000006",
+      CONTACT,
+      CURRENT,
+      15,
+      null,
+      "attachment",
+    );
 
     expect(
       directMessagesForContact(
-        [later, group, anotherContact, acknowledgement, earlierInbound],
+        [
+          later,
+          group,
+          anotherContact,
+          acknowledgement,
+          attachment,
+          earlierInbound,
+        ],
         CURRENT,
         CONTACT,
       ).map((row) => row.message.messageId),
     ).toEqual([
       "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000006",
       "00000000-0000-4000-8000-000000000002",
     ]);
   });

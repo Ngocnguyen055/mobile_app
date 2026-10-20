@@ -2,6 +2,22 @@ import { z } from "zod";
 
 export const peerIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{3,32}$/);
 export const idSchema = z.string().uuid();
+export const MAX_CHAT_ATTACHMENTS = 3;
+export const MAX_CHAT_ATTACHMENT_BYTES = 512 * 1024;
+export const chatAttachmentSchema = z
+  .object({
+    id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(160)
+      .refine((name) => !/[\\/\u0000-\u001f]/.test(name), "invalid file name"),
+    mime: z.string().trim().min(1).max(120),
+    size: z.number().int().positive().max(MAX_CHAT_ATTACHMENT_BYTES),
+  })
+  .strict();
+export type ChatAttachment = z.infer<typeof chatAttachmentSchema>;
 export const messageSchema = z
   .object({
     messageId: idSchema,
@@ -9,9 +25,14 @@ export const messageSchema = z
     senderId: peerIdSchema,
     receiverId: peerIdSchema,
     groupId: idSchema.nullish(),
-    type: z.enum(["text", "ack"]),
+    type: z.enum(["text", "attachment", "ack"]),
     timestamp: z.number().int().positive(),
     body: z.string().max(4000),
+    attachments: z
+      .array(chatAttachmentSchema)
+      .min(1)
+      .max(MAX_CHAT_ATTACHMENTS)
+      .optional(),
     mode: z.enum(["DIRECT", "RELAY"]),
     ackFor: idSchema.optional(),
     attempt: z.number().int().min(1).max(4),
@@ -22,6 +43,17 @@ export const messageSchema = z
       ctx.addIssue({ code: "custom", message: "ackFor required" });
     if (m.type === "text" && !m.body.trim())
       ctx.addIssue({ code: "custom", message: "body required" });
+    if (m.type === "text" && m.attachments)
+      ctx.addIssue({ code: "custom", message: "text cannot have attachments" });
+    if (m.type === "attachment" && !m.attachments)
+      ctx.addIssue({ code: "custom", message: "attachments required" });
+    if (m.type === "attachment" && m.groupId != null)
+      ctx.addIssue({
+        code: "custom",
+        message: "attachments are only supported in direct chat",
+      });
+    if (m.type === "ack" && m.attachments)
+      ctx.addIssue({ code: "custom", message: "ack cannot have attachments" });
   });
 export type ChatMessage = z.infer<typeof messageSchema>;
 export type DeliveryMode = ChatMessage["mode"];

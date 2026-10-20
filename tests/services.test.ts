@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { io, type Socket } from "socket.io-client";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
+import jwt from "jsonwebtoken";
 import { createSignaling } from "../src/signaling/index.ts";
 import { createRelay } from "../src/relay/index.ts";
 
@@ -168,6 +169,87 @@ describe("signaling and relay integration", () => {
         connection: null,
       },
     });
+  });
+
+  it("denies discovery and relay delivery when either account blocks direct chat", async () => {
+    const aId = "000000000000000000000001";
+    const bId = "000000000000000000000002";
+    const jwtSecret = process.env.JWT_SECRET || "local-development-only-secret";
+    const authorizer = vi.fn().mockResolvedValue(false);
+    const signal = createSignaling(
+      undefined,
+      {
+        group: async () => null,
+        project: async () => null,
+        forPeer: async () => [],
+      },
+      authorizer,
+    );
+    const signalUrl = await start(signal);
+    const a = await register(
+      signalUrl,
+      aId,
+      jwt.sign({ sub: aId }, jwtSecret),
+    );
+    const b = await register(
+      signalUrl,
+      bId,
+      jwt.sign({ sub: bId }, jwtSecret),
+    );
+    expect(
+      await a.signal.timeout(3000).emitWithAck("peer:lookup", { peerId: bId }),
+    ).toEqual({ ok: false, error: "direct chat blocked" });
+
+    const groupId = randomUUID();
+    const relay = createRelay(
+      undefined,
+      async (id) =>
+        id === groupId
+          ? {
+              id: groupId,
+              ownerId: aId,
+              members: [aId, bId],
+              version: 1,
+            }
+          : null,
+      authorizer,
+    );
+    const relayUrl = await start(relay);
+    const ar = await connect(relayUrl, { token: a.token });
+    const br = await connect(relayUrl, { token: b.token });
+    const response = await ar.timeout(3000).emitWithAck("relay:send", {
+      messageId: randomUUID(),
+      sessionId: randomUUID(),
+      senderId: aId,
+      receiverId: bId,
+      type: "text",
+      timestamp: Date.now(),
+      body: "blocked message",
+      mode: "RELAY",
+      attempt: 1,
+      sequence: 1,
+    });
+    expect(response).toEqual({ ok: false, error: "direct chat blocked" });
+    expect(authorizer).toHaveBeenCalledWith(aId, bId);
+
+    const receivedGroup = new Promise<unknown>((resolve) =>
+      br.once("relay:receive", resolve),
+    );
+    const groupResponse = await ar.timeout(3000).emitWithAck("relay:send", {
+      messageId: randomUUID(),
+      sessionId: groupId,
+      senderId: aId,
+      receiverId: bId,
+      groupId,
+      type: "text",
+      timestamp: Date.now(),
+      body: "group message remains allowed",
+      mode: "RELAY",
+      attempt: 1,
+      sequence: 1,
+    });
+    expect(groupResponse).toEqual({ ok: true });
+    await expect(receivedGroup).resolves.toMatchObject({ groupId });
   });
 
   it("discovers three peers, rejects duplicate identity, and resolves concurrent group edits by version", async () => {

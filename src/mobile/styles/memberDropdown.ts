@@ -1,0 +1,62 @@
+import { StyleSheet } from "react-native";
+
+import { cardShadow, colors } from "./theme.ts";
+
+export const styles = StyleSheet.create({
+  container: { gap: 5 },
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    padding: 12,
+    minHeight: 50,
+    backgroundColor: colors.surface,
+  },
+  selection: { flex: 1, gap: 3 },
+  name: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  email: { color: colors.textSoft, fontSize: 12 },
+  placeholder: { color: colors.textSoft, fontWeight: "400" },
+  arrow: { color: colors.primary, fontSize: 18 },
+  disabled: { opacity: 0.5 },
+  hint: { color: colors.textSoft, fontSize: 12, lineHeight: 18 },
+  menu: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
+    ...cardShadow,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 11,
+    margin: 8,
+    padding: 11,
+    color: colors.text,
+    backgroundColor: colors.surfaceMuted,
+  },
+  options: { maxHeight: 220 },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  selectedOption: { backgroundColor: colors.primarySoft },
+  check: { color: colors.primary, fontSize: 18, fontWeight: "700" },
+  empty: { padding: 12, color: colors.textSoft, fontSize: 13, lineHeight: 19 },
+  close: {
+    padding: 11,
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  closeText: { color: colors.primary, fontWeight: "700" },
+});

@@ -150,6 +150,32 @@ notificationSchema.index(
   { user: 1, dedupeKey: 1 },
   { unique: true, partialFilterExpression: { dedupeKey: { $type: "string" } } },
 );
+const userBlockSchema = new Schema(
+  {
+    blocker: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    blocked: { type: Schema.Types.ObjectId, ref: "User", required: true },
+  },
+  { timestamps: true, collection: "user_blocks" },
+);
+userBlockSchema.index({ blocker: 1, blocked: 1 }, { unique: true });
+userBlockSchema.index({ blocked: 1, blocker: 1 });
+userBlockSchema.pre("validate", function () {
+  if (String(this.blocker) === String(this.blocked))
+    this.invalidate("blocked", "a user cannot block themselves");
+});
+const chatAttachmentSchema = new Schema(
+  {
+    sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    receiver: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    name: { type: String, required: true, maxlength: 160 },
+    mime: { type: String, required: true, maxlength: 120 },
+    size: { type: Number, required: true, min: 1, max: 512 * 1024 },
+    data: { type: Buffer, required: true },
+  },
+  { timestamps: true, collection: "chat_attachments" },
+);
+chatAttachmentSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
+chatAttachmentSchema.index({ receiver: 1, sender: 1, createdAt: -1 });
 export const User = mongoose.model("User", userSchema);
 export const Project = mongoose.model("Project", projectSchema);
 export const ProjectMember = mongoose.model(
@@ -162,3 +188,8 @@ export const Discussion = mongoose.model("Discussion", discussionSchema);
 export const Document = mongoose.model("Document", documentSchema);
 export const Comment = mongoose.model("Comment", commentSchema);
 export const Notification = mongoose.model("Notification", notificationSchema);
+export const UserBlock = mongoose.model("UserBlock", userBlockSchema);
+export const ChatAttachment = mongoose.model(
+  "ChatAttachment",
+  chatAttachmentSchema,
+);

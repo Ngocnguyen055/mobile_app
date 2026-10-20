@@ -138,6 +138,31 @@ afterEach(async () => {
 });
 
 describe("project hierarchy mutations", () => {
+  it("reports when a member is already in the project", async () => {
+    vi.spyOn(User, "findOne").mockReturnValue(
+      query(
+        new User({
+          _id: manager,
+          name: "Manager",
+          email: "manager@example.test",
+          passwordHash: "hash",
+        }),
+      ) as unknown as ReturnType<typeof User.findOne>,
+    );
+
+    const response = await patch(
+      `/projects/${childId}/members`,
+      { userId: manager, version: 4 },
+      "POST",
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Thành viên này đã có trong dự án",
+    });
+    expect(ProjectMember.updateOne).not.toHaveBeenCalled();
+  });
+
   it("manager cannot add someone outside root membership", async () => {
     current.role = "MANAGER";
     current.permissions = accessModule.permissionsForProject(

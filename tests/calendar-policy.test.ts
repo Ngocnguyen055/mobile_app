@@ -4,7 +4,7 @@ import {
   calendarCreatePermissions,
   calendarProjectId,
   matchesCalendarScope,
-} from "../src/mobile/calendarPolicy.ts";
+} from "../src/mobile/domain/calendarPolicy.ts";
 
 describe("calendar scope and action policy", () => {
   it("always exposes exactly the three aggregate filters", () => {

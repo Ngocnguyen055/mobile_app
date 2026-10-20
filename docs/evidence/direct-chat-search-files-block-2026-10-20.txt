@@ -1,0 +1,38 @@
+DIRECT CHAT SEARCH / FILE / BLOCK - LOCAL AUTOMATED EVIDENCE
+Date: 2026-10-20 (Asia/Saigon)
+Workspace: C:\Projects\Mobile_App
+Runtime: Node v24.14.0, npm 11.9.0
+
+1. npm.cmd run typecheck
+Result: PASS, exit code 0.
+Scope: shared, api, signaling, relay, web-peer, mobile and scripts.
+
+2. npm.cmd run lint
+Result: PASS, exit code 0.
+Scope: src, tests and scripts (.ts/.tsx).
+
+3. npm.cmd test
+Result: PASS, 22 test files and 87 tests passed.
+Direct-chat coverage includes:
+- email search validation/filtering;
+- direct attachment protocol metadata and size/count rules;
+- real Express/Multer multipart request with mocked Mongo models;
+- participant download allowed and unrelated account returned HTTP 404;
+- SQLite direct history, attachment list, contact cache, block cache and local deletion;
+- signaling lookup and relay delivery rejected for a blocked pair;
+- group-chat, ACK, retry, deduplication and fallback regression tests.
+
+4. npm.cmd run build -w @ds01/web-peer
+Result: PASS, Vite built 74 modules.
+Output summary: JS 340.53 kB (gzip 101.12 kB).
+
+5. npm.cmd run export -w @ds01/mobile
+Result: PASS, Android bundle built from 866 modules, 2.78 MB Hermes bundle.
+Observed warning: react-native-webrtc imports event-target-shim/index through a subpath not declared in that package's exports; Metro used file-based fallback. Export still completed.
+
+Limits of this evidence:
+- Mongo operations in the new direct-chat API tests use model mocks; Atlas was not contacted.
+- Expo export validates the JavaScript bundle, not native installation or UI interaction.
+- No Android emulator/device was controlled in this run.
+- No real WebRTC DataChannel between two devices or two networks was run.
+- No screenshot, DIRECT log or RELAY log from the new mobile UI is claimed here.

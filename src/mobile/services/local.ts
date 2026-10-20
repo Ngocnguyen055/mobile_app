@@ -1,0 +1,475 @@
+// local.ts.
+import * as SQLite from "expo-sqlite";
+import * as Notifications from "expo-notifications";
+import {
+  isDirectMessageBetween,
+  peerIdSchema,
+  type DirectChatContact,
+  type DirectChatStore,
+  type StoredMessage,
+  type MessageStatus,
+} from "@ds01/shared";
+import type { CalendarEvent, Task } from "./api.ts";
+
+const database = SQLite.openDatabaseAsync("ds01-chat.db");
+let initialized: typeof database | undefined;
+async function db() {
+  initialized ||= (async () => {
+    const connection = await database;
+    await connection.execAsync(
+      "CREATE TABLE IF NOT EXISTS messages (scope TEXT NOT NULL, message_id TEXT NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, group_id TEXT, timestamp INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(scope,message_id,sender_id,receiver_id)); CREATE INDEX IF NOT EXISTS messages_order ON messages(scope,timestamp); CREATE TABLE IF NOT EXISTS storage_migrations (name TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS reminders (task_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT); CREATE TABLE IF NOT EXISTS event_reminders (event_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS direct_chat_preferences (scope TEXT NOT NULL, peer_id TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,peer_id)); CREATE TABLE IF NOT EXISTS direct_chat_contacts (scope TEXT NOT NULL, peer_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,peer_id));",
+    );
+    const messageColumns = await connection.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(messages)",
+    );
+    if (!messageColumns.some((column) => column.name === "group_id"))
+      await connection.execAsync(
+        "ALTER TABLE messages ADD COLUMN group_id TEXT",
+      );
+    const groupIdMigration = "messages-group-id-v1";
+    const migrationComplete = await connection.getFirstAsync(
+      "SELECT 1 FROM storage_migrations WHERE name=?",
+      groupIdMigration,
+    );
+    if (!migrationComplete) {
+      const legacyRows = await connection.getAllAsync<{
+        scope: string;
+        message_id: string;
+        sender_id: string;
+        receiver_id: string;
+        payload: string;
+      }>(
+        "SELECT scope,message_id,sender_id,receiver_id,payload FROM messages WHERE group_id IS NULL",
+      );
+      for (const row of legacyRows) {
+        let groupId: unknown;
+        try {
+          groupId = (JSON.parse(row.payload) as { groupId?: unknown }).groupId;
+        } catch {
+          continue;
+        }
+        if (typeof groupId !== "string") continue;
+        await connection.runAsync(
+          "UPDATE messages SET group_id=? WHERE scope=? AND message_id=? AND sender_id=? AND receiver_id=?",
+          groupId,
+          row.scope,
+          row.message_id,
+          row.sender_id,
+          row.receiver_id,
+        );
+      }
+      await connection.runAsync(
+        "INSERT INTO storage_migrations(name) VALUES(?)",
+        groupIdMigration,
+      );
+    }
+    await connection.execAsync(
+      "CREATE INDEX IF NOT EXISTS messages_direct ON messages(scope,group_id,sender_id,receiver_id,timestamp,message_id)",
+    );
+    const columns = await connection.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(reminders)",
+    );
+    if (!columns.some((column) => column.name === "signature"))
+      await connection.execAsync(
+        "ALTER TABLE reminders ADD COLUMN signature TEXT",
+      );
+    return connection;
+  })();
+  return initialized;
+}
+export class MobileStore implements DirectChatStore {
+  constructor(private scope: string) {}
+  async put(row: StoredMessage) {
+    const conn = await db();
+    const m = row.message;
+    await conn.runAsync(
+      "INSERT OR REPLACE INTO messages(scope,message_id,sender_id,receiver_id,group_id,timestamp,payload,status) VALUES(?,?,?,?,?,?,?,?)",
+      this.scope,
+      m.messageId,
+      m.senderId,
+      m.receiverId,
+      m.groupId ?? null,
+      m.timestamp,
+      JSON.stringify(m),
+      row.status,
+    );
+  }
+  async putDirect(row: StoredMessage) {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const message = row.message;
+    const otherPeerId =
+      message.senderId === currentPeerId
+        ? message.receiverId
+        : message.senderId;
+    peerIdSchema.parse(otherPeerId);
+    if (
+      otherPeerId === currentPeerId ||
+      !isDirectMessageBetween(message, currentPeerId, otherPeerId)
+    )
+      throw new Error("direct message does not belong to this store");
+    await this.put(row);
+  }
+  async mark(messageId: string, receiverId: string, status: MessageStatus) {
+    const conn = await db();
+    await conn.runAsync(
+      "UPDATE messages SET status=? WHERE scope=? AND message_id=? AND receiver_id=?",
+      status,
+      this.scope,
+      messageId,
+      receiverId,
+    );
+  }
+  async has(messageId: string, senderId: string) {
+    const conn = await db();
+    return !!(await conn.getFirstAsync(
+      "SELECT 1 FROM messages WHERE scope=? AND message_id=? AND sender_id=?",
+      this.scope,
+      messageId,
+      senderId,
+    ));
+  }
+  async list(): Promise<StoredMessage[]> {
+    const conn = await db();
+    const rows = await conn.getAllAsync<{
+      payload: string;
+      status: MessageStatus;
+    }>(
+      "SELECT payload,status FROM messages WHERE scope=? ORDER BY timestamp,message_id",
+      this.scope,
+    );
+    return rows.map((row) => ({
+      message: JSON.parse(row.payload),
+      status: row.status,
+    }));
+  }
+  async listDirect(peerId: string): Promise<StoredMessage[]> {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (currentPeerId === otherPeerId)
+      throw new Error("direct conversation requires another peer");
+    const conn = await db();
+    const rows = await conn.getAllAsync<{
+      payload: string;
+      status: MessageStatus;
+    }>(
+      "SELECT payload,status FROM messages WHERE scope=? AND group_id IS NULL AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?)) ORDER BY timestamp,message_id,sender_id,receiver_id",
+      this.scope,
+      currentPeerId,
+      otherPeerId,
+      otherPeerId,
+      currentPeerId,
+    );
+    return rows
+      .map((row) => ({
+        message: JSON.parse(row.payload),
+        status: row.status,
+      }))
+      .filter((row) =>
+        isDirectMessageBetween(row.message, currentPeerId, otherPeerId),
+      );
+  }
+  async listDirectAttachments(peerId: string): Promise<StoredMessage[]> {
+    return (await this.listDirect(peerId)).filter(
+      (row) => row.message.type === "attachment",
+    );
+  }
+  async deleteDirect(peerId: string): Promise<void> {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (currentPeerId === otherPeerId)
+      throw new Error("direct conversation requires another peer");
+    const conn = await db();
+    await conn.runAsync(
+      "DELETE FROM messages WHERE scope=? AND group_id IS NULL AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))",
+      this.scope,
+      currentPeerId,
+      otherPeerId,
+      otherPeerId,
+      currentPeerId,
+    );
+  }
+  async setDirectBlocked(peerId: string, blocked: boolean): Promise<void> {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (currentPeerId === otherPeerId)
+      throw new Error("cannot block yourself");
+    const conn = await db();
+    if (!blocked) {
+      await conn.runAsync(
+        "DELETE FROM direct_chat_preferences WHERE scope=? AND peer_id=?",
+        this.scope,
+        otherPeerId,
+      );
+      return;
+    }
+    await conn.runAsync(
+      "INSERT INTO direct_chat_preferences(scope,peer_id,blocked) VALUES(?,?,1) ON CONFLICT(scope,peer_id) DO UPDATE SET blocked=1",
+      this.scope,
+      otherPeerId,
+    );
+  }
+  async isDirectBlocked(peerId: string): Promise<boolean> {
+    const otherPeerId = peerIdSchema.parse(peerId);
+    const conn = await db();
+    return !!(await conn.getFirstAsync(
+      "SELECT 1 FROM direct_chat_preferences WHERE scope=? AND peer_id=? AND blocked=1",
+      this.scope,
+      otherPeerId,
+    ));
+  }
+  async listDirectBlocked(): Promise<string[]> {
+    const conn = await db();
+    const rows = await conn.getAllAsync<{ peer_id: string }>(
+      "SELECT peer_id FROM direct_chat_preferences WHERE scope=? AND blocked=1 ORDER BY peer_id",
+      this.scope,
+    );
+    return rows.map((row) => row.peer_id);
+  }
+  async saveDirectContact(contact: DirectChatContact): Promise<void> {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const peerId = peerIdSchema.parse(contact.peerId);
+    const name = contact.name.trim();
+    const email = contact.email.trim().toLowerCase();
+    if (peerId === currentPeerId) throw new Error("cannot save yourself");
+    if (!name || !email || !Number.isSafeInteger(contact.updatedAt))
+      throw new Error("invalid direct contact");
+    const conn = await db();
+    await conn.runAsync(
+      "INSERT INTO direct_chat_contacts(scope,peer_id,name,email,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,peer_id) DO UPDATE SET name=excluded.name,email=excluded.email,updated_at=excluded.updated_at",
+      this.scope,
+      peerId,
+      name,
+      email,
+      contact.updatedAt,
+    );
+  }
+  async listDirectContacts(): Promise<DirectChatContact[]> {
+    const conn = await db();
+    const rows = await conn.getAllAsync<{
+      peer_id: string;
+      name: string;
+      email: string;
+      updated_at: number;
+    }>(
+      "SELECT peer_id,name,email,updated_at FROM direct_chat_contacts WHERE scope=? ORDER BY updated_at DESC,peer_id",
+      this.scope,
+    );
+    return rows.map((row) => ({
+      peerId: row.peer_id,
+      name: row.name,
+      email: row.email,
+      updatedAt: row.updated_at,
+    }));
+  }
+  async removeDirectContact(peerId: string): Promise<void> {
+    const otherPeerId = peerIdSchema.parse(peerId);
+    const conn = await db();
+    await conn.runAsync(
+      "DELETE FROM direct_chat_contacts WHERE scope=? AND peer_id=?",
+      this.scope,
+      otherPeerId,
+    );
+  }
+}
+export type ReminderOffset =
+  604800000 | 86400000 | 3600000 | 1800000 | 300000 | 0;
+export const REMINDER_CHANNEL_ID = "planner-reminders";
+export const REMINDER_OFFSETS: readonly ReminderOffset[] = [
+  604800000, 86400000, 3600000, 1800000, 300000, 0,
+];
+const reminderOffsets = new Set<number>(REMINDER_OFFSETS);
+const notificationIds = (value?: string) => {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+};
+const formatViDateTime = (value: string) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(new Date(value));
+
+export async function syncReminder(task: Task, offsets: ReminderOffset[]) {
+  const conn = await db();
+  const signature = JSON.stringify([
+    task.title,
+    task.status,
+    task.dueAt,
+    [...offsets].sort(),
+  ]);
+  const old = await conn.getFirstAsync<{
+    notification_ids: string;
+    signature: string | null;
+  }>(
+    "SELECT notification_ids,signature FROM reminders WHERE task_id=?",
+    task._id,
+  );
+  if (old?.signature === signature) return;
+  for (const id of old ? (JSON.parse(old.notification_ids) as string[]) : [])
+    await Notifications.cancelScheduledNotificationAsync(id);
+  const ids: string[] = [];
+  if (task.status !== "done" && task.dueAt) {
+    for (const offset of offsets) {
+      const when = new Date(task.dueAt).getTime() - offset;
+      if (when <= Date.now()) continue;
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Sắp đến hạn: ${task.title}`,
+          body: `Deadline ${formatViDateTime(task.dueAt)}`,
+          data: { taskId: task._id },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(when),
+          channelId: REMINDER_CHANNEL_ID,
+        },
+      });
+      ids.push(id);
+    }
+  }
+  await conn.runAsync(
+    "INSERT OR REPLACE INTO reminders(task_id,notification_ids,signature) VALUES(?,?,?)",
+    task._id,
+    JSON.stringify(ids),
+    signature,
+  );
+}
+export async function cancelReminder(taskId: string) {
+  await syncReminder(
+    {
+      _id: taskId,
+      title: "",
+      status: "done",
+      description: "",
+      project: "",
+      version: 1,
+    },
+    [],
+  );
+}
+export async function reconcileReminders(
+  tasks: Task[],
+  userId: string,
+  offsets: ReminderOffset[],
+) {
+  const conn = await db();
+  const known = await conn.getAllAsync<{ task_id: string }>(
+    "SELECT task_id FROM reminders",
+  );
+  const ids = new Set(tasks.map((t) => t._id));
+  for (const row of known)
+    if (!ids.has(row.task_id)) await cancelReminder(row.task_id);
+  for (const task of tasks) {
+    const assignee =
+      typeof task.assignee === "string" ? task.assignee : task.assignee?._id;
+    if (assignee === userId) await syncReminder(task, offsets);
+    else await cancelReminder(task._id);
+  }
+}
+
+export async function syncEventReminder(event: CalendarEvent) {
+  const conn = await db();
+  const offsets = [...new Set(event.reminderOffsets || [])]
+    .filter((offset): offset is ReminderOffset => reminderOffsets.has(offset))
+    .sort((a, b) => b - a);
+  const signature = JSON.stringify([
+    event.title,
+    event.startsAt,
+    event.endsAt,
+    event.note,
+    event.allDay,
+    offsets,
+  ]);
+  const old = await conn.getFirstAsync<{
+    notification_ids: string;
+    signature: string;
+  }>(
+    "SELECT notification_ids,signature FROM event_reminders WHERE event_id=?",
+    event._id,
+  );
+  if (old?.signature === signature) return;
+
+  for (const id of notificationIds(old?.notification_ids)) {
+    await Notifications.cancelScheduledNotificationAsync(id);
+  }
+
+  const ids: string[] = [];
+  const startsAt = new Date(event.startsAt).getTime();
+  if (Number.isFinite(startsAt)) {
+    for (const offset of offsets) {
+      const when = startsAt - offset;
+      if (when <= Date.now()) continue;
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Sắp diễn ra: ${event.title}`,
+          body: event.allDay
+            ? `Sự kiện ngày ${formatViDateTime(event.startsAt).slice(0, 10)}`
+            : `Bắt đầu lúc ${formatViDateTime(event.startsAt)}`,
+          data: { eventId: event._id },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(when),
+          channelId: REMINDER_CHANNEL_ID,
+        },
+      });
+      ids.push(id);
+    }
+  }
+  await conn.runAsync(
+    "INSERT OR REPLACE INTO event_reminders(event_id,notification_ids,signature) VALUES(?,?,?)",
+    event._id,
+    JSON.stringify(ids),
+    signature,
+  );
+}
+
+export async function cancelEventReminder(eventId: string) {
+  const conn = await db();
+  const old = await conn.getFirstAsync<{ notification_ids: string }>(
+    "SELECT notification_ids FROM event_reminders WHERE event_id=?",
+    eventId,
+  );
+  for (const id of notificationIds(old?.notification_ids)) {
+    await Notifications.cancelScheduledNotificationAsync(id);
+  }
+  await conn.runAsync("DELETE FROM event_reminders WHERE event_id=?", eventId);
+}
+
+export async function reconcileEventReminders(events: CalendarEvent[]) {
+  const conn = await db();
+  const known = await conn.getAllAsync<{ event_id: string }>(
+    "SELECT event_id FROM event_reminders",
+  );
+  const currentIds = new Set(events.map((event) => event._id));
+  for (const row of known) {
+    if (!currentIds.has(row.event_id)) await cancelEventReminder(row.event_id);
+  }
+  for (const event of events) await syncEventReminder(event);
+}
+
+export async function clearAllReminders() {
+  const conn = await db();
+  const taskRows = await conn.getAllAsync<{ notification_ids: string }>(
+    "SELECT notification_ids FROM reminders",
+  );
+  const eventRows = await conn.getAllAsync<{ notification_ids: string }>(
+    "SELECT notification_ids FROM event_reminders",
+  );
+  for (const row of [...taskRows, ...eventRows]) {
+    for (const id of notificationIds(row.notification_ids))
+      await Notifications.cancelScheduledNotificationAsync(id);
+  }
+  await conn.execAsync("DELETE FROM reminders; DELETE FROM event_reminders;");
+}

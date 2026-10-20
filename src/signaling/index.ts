@@ -24,6 +24,10 @@ if (
     "JWT_SECRET and PEER_SECRET must each be at least 32 characters in production",
   );
 type Peer = { socket: Socket; lastSeen: number };
+export type DirectChatAuthorizer = (
+  senderId: string,
+  receiverId: string,
+) => Promise<boolean>;
 type Reply = (response: {
   ok: boolean;
   error?: string;
@@ -36,9 +40,29 @@ type Reply = (response: {
 const HEARTBEAT_FRESH_MS = 30_000;
 const PEER_SECRET = process.env.PEER_SECRET || "local-development-only-secret";
 const JWT_SECRET = process.env.JWT_SECRET || "local-development-only-secret";
+const accountPeerId = /^[a-f\d]{24}$/i;
+const httpDirectChatAuthorizer: DirectChatAuthorizer = async (
+  senderId,
+  receiverId,
+) => {
+  if (!accountPeerId.test(senderId) || !accountPeerId.test(receiverId)) return true;
+  const base = process.env.API_INTERNAL_URL || "http://127.0.0.1:4000";
+  const query = new URLSearchParams({ senderId, receiverId });
+  const response = await fetch(
+    `${base}/internal/direct-chat/authorize?${query.toString()}`,
+    {
+      headers: { "x-peer-secret": PEER_SECRET },
+      signal: AbortSignal.timeout(2000),
+    },
+  );
+  if (!response.ok) throw new Error("direct chat authorization unavailable");
+  const result = (await response.json()) as { allowed?: unknown };
+  return result.allowed === true;
+};
 export function createSignaling(
   httpServer: HttpServer = createServer(),
   directory: ProjectDirectory = httpProjectDirectory(),
+  authorizeDirect: DirectChatAuthorizer = httpDirectChatAuthorizer,
 ) {
   const app = express();
   const peers = new Map<string, Peer>();
@@ -204,7 +228,7 @@ export function createSignaling(
         return reply({ ok: false, error: "registration required" });
       reply({ ok: true, peers: [...peers.keys()] });
     });
-    socket.on("peer:lookup", (input: unknown, reply: Reply) => {
+    socket.on("peer:lookup", async (input: unknown, reply: Reply) => {
       if (typeof reply !== "function") return;
       const requesterId = peerFor(socket);
       if (!requesterId || peers.get(requesterId)?.socket.id !== socket.id)
@@ -223,6 +247,15 @@ export function createSignaling(
       if (!parsed.success)
         return reply({ ok: false, error: "invalid peer lookup" });
       const peerId = parsed.data;
+      try {
+        if (!(await authorizeDirect(requesterId, peerId)))
+          return reply({ ok: false, error: "direct chat blocked" });
+      } catch {
+        return reply({
+          ok: false,
+          error: "direct chat authorization unavailable",
+        });
+      }
       const target = peers.get(peerId);
       if (
         !target ||
@@ -252,7 +285,7 @@ export function createSignaling(
         },
       });
     });
-    socket.on("signal:send", (input: unknown, reply: Reply) => {
+    socket.on("signal:send", async (input: unknown, reply: Reply) => {
       const senderId = peerFor(socket);
       const value = input as {
         to?: unknown;
@@ -267,6 +300,15 @@ export function createSignaling(
         JSON.stringify(value).length > 12_000
       )
         return reply?.({ ok: false, error: "invalid signaling data" });
+      try {
+        if (!(await authorizeDirect(senderId, String(value.to))))
+          return reply?.({ ok: false, error: "direct chat blocked" });
+      } catch {
+        return reply?.({
+          ok: false,
+          error: "direct chat authorization unavailable",
+        });
+      }
       const target = peers.get(value.to as string);
       if (!target) return reply?.({ ok: false, error: "peer offline" });
       target.socket.emit("signal:receive", {

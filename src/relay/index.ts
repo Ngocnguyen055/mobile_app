@@ -15,10 +15,34 @@ if (
     "PEER_SECRET must be set to at least 32 characters in production",
   );
 type Reply = (response: { ok: boolean; error?: string }) => void;
+export type DirectChatAuthorizer = (
+  senderId: string,
+  receiverId: string,
+) => Promise<boolean>;
 const SECRET = process.env.PEER_SECRET || "local-development-only-secret";
+const accountPeerId = /^[a-f\d]{24}$/i;
+const httpDirectChatAuthorizer: DirectChatAuthorizer = async (
+  senderId,
+  receiverId,
+) => {
+  if (!accountPeerId.test(senderId) || !accountPeerId.test(receiverId)) return true;
+  const base = process.env.API_INTERNAL_URL || "http://127.0.0.1:4000";
+  const query = new URLSearchParams({ senderId, receiverId });
+  const response = await fetch(
+    `${base}/internal/direct-chat/authorize?${query.toString()}`,
+    {
+      headers: { "x-peer-secret": SECRET },
+      signal: AbortSignal.timeout(2000),
+    },
+  );
+  if (!response.ok) throw new Error("direct chat authorization unavailable");
+  const result = (await response.json()) as { allowed?: unknown };
+  return result.allowed === true;
+};
 export function createRelay(
   httpServer: HttpServer = createServer(),
   groupLookup?: (id: string) => Promise<Group | null>,
+  authorizeDirect: DirectChatAuthorizer = httpDirectChatAuthorizer,
 ) {
   const app = express();
   const connections = new Map<string, Socket>();
@@ -76,7 +100,8 @@ export function createRelay(
             !group.members.includes(msg.receiverId)
           )
             throw new Error("group access denied");
-        }
+        } else if (!(await authorizeDirect(peerId, msg.receiverId)))
+          throw new Error("direct chat blocked");
         const target = connections.get(msg.receiverId);
         if (!target) throw new Error("receiver offline");
         target.emit("relay:receive", msg);

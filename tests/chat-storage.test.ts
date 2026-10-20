@@ -64,6 +64,7 @@ const ids = {
   group: "00000000-0000-4000-8000-000000000004",
   outsider: "00000000-0000-4000-8000-000000000005",
   added: "00000000-0000-4000-8000-000000000006",
+  attachment: "00000000-0000-4000-8000-000000000007",
 };
 
 function textMessage(input: {
@@ -166,13 +167,13 @@ function seedLegacyMessages(database: DatabaseSync) {
 }
 
 describe("MobileStore direct-message migration", () => {
-  let MobileStore: typeof import("../src/mobile/local.ts").MobileStore;
+  let MobileStore: typeof import("../src/mobile/services/local.ts").MobileStore;
 
   beforeAll(async () => {
     const database = new DatabaseSync(":memory:");
     sqliteState.database = database;
     seedLegacyMessages(database);
-    ({ MobileStore } = await import("../src/mobile/local.ts"));
+    ({ MobileStore } = await import("../src/mobile/services/local.ts"));
   });
 
   afterAll(() => {
@@ -243,6 +244,63 @@ describe("MobileStore direct-message migration", () => {
     await expect(store.putDirect(outsiderMessage)).rejects.toThrow(
       "does not belong",
     );
+  });
+
+  it("persists contact/block preferences, lists attachments, and deletes only one direct conversation", async () => {
+    const store = new MobileStore(CURRENT);
+    await store.saveDirectContact({
+      peerId: OTHER,
+      name: "Bình",
+      email: "BINH@example.test",
+      updatedAt: 123,
+    });
+    expect(await store.listDirectContacts()).toEqual([
+      {
+        peerId: OTHER,
+        name: "Bình",
+        email: "binh@example.test",
+        updatedAt: 123,
+      },
+    ]);
+    await store.setDirectBlocked(OTHER, true);
+    expect(await store.isDirectBlocked(OTHER)).toBe(true);
+    expect(await store.listDirectBlocked()).toEqual([OTHER]);
+
+    const attachment = row({
+      ...textMessage({
+        messageId: ids.attachment,
+        senderId: CURRENT,
+        receiverId: OTHER,
+        timestamp: 300,
+        groupId: null,
+      }),
+      type: "attachment",
+      body: "",
+      attachments: [
+        {
+          id: "507f1f77bcf86cd799439011",
+          name: "anh.png",
+          mime: "image/png",
+          size: 32_000,
+        },
+      ],
+    });
+    await store.putDirect(attachment);
+    expect(
+      (await store.listDirectAttachments(OTHER)).map(
+        (item) => item.message.messageId,
+      ),
+    ).toEqual([ids.attachment]);
+
+    await store.deleteDirect(OTHER);
+    expect(await store.listDirect(OTHER)).toEqual([]);
+    expect((await store.list()).some((item) => item.message.groupId === GROUP_ID)).toBe(
+      true,
+    );
+    await store.removeDirectContact(OTHER);
+    expect(await store.listDirectContacts()).toEqual([]);
+    await store.setDirectBlocked(OTHER, false);
+    expect(await store.isDirectBlocked(OTHER)).toBe(false);
   });
 });
 

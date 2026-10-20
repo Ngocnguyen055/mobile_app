@@ -12,7 +12,7 @@ import {
   parseViDateTime,
   sameDay,
   toViDateTimeInput,
-} from "../src/mobile/calendar.ts";
+} from "../src/mobile/utils/calendar.ts";
 
 describe("Vietnamese calendar helpers", () => {
   it("builds September 2026 in Monday-first columns with complete weeks", () => {

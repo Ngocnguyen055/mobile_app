@@ -1,6 +1,7 @@
 import {
   isDirectMessageBetween,
   peerIdSchema,
+  type DirectChatContact,
   type DirectChatStore,
   type StoredMessage,
   type MessageStatus,
@@ -9,6 +10,12 @@ export class WebStore implements DirectChatStore {
   constructor(private scope: string) {}
   private get key() {
     return `ds01-history-v1-${this.scope}`;
+  }
+  private get contactKey() {
+    return `ds01-direct-contacts-v1-${this.scope}`;
+  }
+  private get blockedKey() {
+    return `ds01-direct-blocked-v1-${this.scope}`;
   }
   private read(): StoredMessage[] {
     try {
@@ -88,5 +95,87 @@ export class WebStore implements DirectChatStore {
           a.message.senderId.localeCompare(b.message.senderId) ||
           a.message.receiverId.localeCompare(b.message.receiverId),
       );
+  }
+  async listDirectAttachments(peerId: string) {
+    return (await this.listDirect(peerId)).filter(
+      (row) => row.message.type === "attachment",
+    );
+  }
+  async deleteDirect(peerId: string) {
+    const currentPeerId = peerIdSchema.parse(this.scope);
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (currentPeerId === otherPeerId)
+      throw new Error("direct conversation requires another peer");
+    this.write(
+      this.read().filter(
+        (row) =>
+          !isDirectMessageBetween(row.message, currentPeerId, otherPeerId),
+      ),
+    );
+  }
+  async setDirectBlocked(peerId: string, blocked: boolean) {
+    const otherPeerId = peerIdSchema.parse(peerId);
+    if (otherPeerId === peerIdSchema.parse(this.scope))
+      throw new Error("cannot block yourself");
+    const rows = new Set<string>(
+      JSON.parse(localStorage.getItem(this.blockedKey) || "[]") as string[],
+    );
+    if (blocked) rows.add(otherPeerId);
+    else rows.delete(otherPeerId);
+    localStorage.setItem(this.blockedKey, JSON.stringify([...rows].sort()));
+  }
+  async isDirectBlocked(peerId: string) {
+    return (await this.listDirectBlocked()).includes(peerIdSchema.parse(peerId));
+  }
+  async listDirectBlocked() {
+    try {
+      const rows = JSON.parse(
+        localStorage.getItem(this.blockedKey) || "[]",
+      ) as unknown;
+      return Array.isArray(rows)
+        ? rows.filter((row): row is string => peerIdSchema.safeParse(row).success)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  async saveDirectContact(contact: DirectChatContact) {
+    const peerId = peerIdSchema.parse(contact.peerId);
+    if (peerId === peerIdSchema.parse(this.scope))
+      throw new Error("cannot save yourself");
+    const contacts = await this.listDirectContacts();
+    const next = [contact, ...contacts.filter((row) => row.peerId !== peerId)];
+    localStorage.setItem(this.contactKey, JSON.stringify(next.slice(0, 500)));
+  }
+  async listDirectContacts(): Promise<DirectChatContact[]> {
+    try {
+      const rows = JSON.parse(
+        localStorage.getItem(this.contactKey) || "[]",
+      ) as DirectChatContact[];
+      return Array.isArray(rows)
+        ? rows
+            .filter(
+              (row) =>
+                peerIdSchema.safeParse(row.peerId).success &&
+                typeof row.name === "string" &&
+                typeof row.email === "string" &&
+                Number.isSafeInteger(row.updatedAt),
+            )
+            .sort((left, right) => right.updatedAt - left.updatedAt)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  async removeDirectContact(peerId: string) {
+    const otherPeerId = peerIdSchema.parse(peerId);
+    localStorage.setItem(
+      this.contactKey,
+      JSON.stringify(
+        (await this.listDirectContacts()).filter(
+          (contact) => contact.peerId !== otherPeerId,
+        ),
+      ),
+    );
   }
 }

@@ -13,6 +13,10 @@ import { z } from "zod";
 import { User, Project, Task, Event } from "./models.ts";
 import { listContactsForUser } from "./contactService.ts";
 import {
+  directChatAuthorizationResponse,
+  installDirectChatRoutes,
+} from "./directChatRoutes.ts";
+import {
   projectAccess,
   assertWritable,
   accessibleProjectIds,
@@ -235,6 +239,17 @@ export function createApi() {
       return res.json(await getProjectChatGroup(project.chatGroupId));
     },
   );
+  app.get("/internal/direct-chat/authorize", internalAuth, async (req, res) => {
+    const input = check(
+      z
+        .object({ senderId: objectId, receiverId: objectId })
+        .strict(),
+      req.query,
+    );
+    return res.json(
+      await directChatAuthorizationResponse(input.senderId, input.receiverId),
+    );
+  });
   app.post("/auth/register", async (req, res) => {
     const data = check(
       z.object({
@@ -275,6 +290,7 @@ export function createApi() {
   installProjectRoutes(app);
   installDiscussionRoutes(app);
   installNotificationRoutes(app);
+  installDirectChatRoutes(app);
   app.get("/me", async (req, res) => {
     const user = await User.findById(req.userId).select("name email");
     res.json(user);

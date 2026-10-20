@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Project, Task } from "../src/mobile/api.ts";
+import type { Project, Task } from "../src/mobile/services/api.ts";
 import {
   canChangeTaskStatus,
   effectiveTaskStatus,
   managedProjectsForMember,
-} from "../src/mobile/projectPolicy.ts";
+} from "../src/mobile/domain/projectPolicy.ts";
 
 describe("mobile hierarchical project policy", () => {
   const project = {

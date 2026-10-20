@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterMembersByEmail } from "../src/mobile/memberSelection.ts";
+import { filterMembersByEmail } from "../src/mobile/utils/memberSelection.ts";
 
 describe("member email selection", () => {
   const members = [

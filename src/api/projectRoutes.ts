@@ -262,7 +262,8 @@ export function installProjectRoutes(app: Express) {
       requireWritable(access);
       checkVersion(access, input.version);
       const user = await memberUser(input, session);
-      if (projectMemberIds(access.project).includes(user.id)) return;
+      if (projectMemberIds(access.project).includes(user.id))
+        throw new HttpError(409, "Thành viên này đã có trong dự án");
       if (
         access.project.parentProject &&
         !projectMemberIds(access.root).includes(user.id)

@@ -4,6 +4,7 @@ import {
   parseMessage,
   peerIdSchema,
   peerDiscoverySchema,
+  type ChatAttachment,
   type ChatMessage,
   type DeliveryMode,
   type Group,
@@ -13,6 +14,12 @@ import {
 export type MessageStatus =
   "pending" | "sent" | "delivered" | "failed" | "received";
 export type StoredMessage = { message: ChatMessage; status: MessageStatus };
+export type DirectChatContact = {
+  peerId: string;
+  name: string;
+  email: string;
+  updatedAt: number;
+};
 export interface ChatStore {
   put(row: StoredMessage): Promise<void>;
   mark(
@@ -22,10 +29,20 @@ export interface ChatStore {
   ): Promise<void>;
   has(messageId: string, senderId: string): Promise<boolean>;
   list(): Promise<StoredMessage[]>;
+  /** Optional local cache used to reject an already-open direct channel after blocking. */
+  isDirectBlocked?(peerId: string): Promise<boolean>;
 }
 export interface DirectChatStore extends ChatStore {
   putDirect(row: StoredMessage): Promise<void>;
   listDirect(peerId: string): Promise<StoredMessage[]>;
+  listDirectAttachments(peerId: string): Promise<StoredMessage[]>;
+  deleteDirect(peerId: string): Promise<void>;
+  setDirectBlocked(peerId: string, blocked: boolean): Promise<void>;
+  isDirectBlocked(peerId: string): Promise<boolean>;
+  listDirectBlocked(): Promise<string[]>;
+  saveDirectContact(contact: DirectChatContact): Promise<void>;
+  listDirectContacts(): Promise<DirectChatContact[]>;
+  removeDirectContact(peerId: string): Promise<void>;
 }
 type RTCFactory = new (config: RTCConfiguration) => RTCPeerConnection;
 type Event = {
@@ -426,8 +443,11 @@ export class PeerClient {
     groupId?: string | null,
     messageId = randomUUID(),
     sequenceOverride?: number,
+    attachments?: ChatAttachment[],
   ): Promise<void> {
-    if (!body.trim()) throw new Error("empty message");
+    if (!body.trim() && !attachments?.length) throw new Error("empty message");
+    if (attachments?.length && groupId)
+      throw new Error("attachments are only supported in direct chat");
     if (groupId && !this.groups.get(groupId)?.members.includes(receiverId))
       throw new Error("receiver not in group");
     const key = groupId || [this.peerId, receiverId].sort().join(":");
@@ -438,19 +458,20 @@ export class PeerClient {
       sessionId = randomUUID();
       this.sessionIds.set(key, sessionId);
     }
-    const message: ChatMessage = {
+    const message = parseMessage({
       messageId,
       sessionId,
       senderId: this.peerId,
       receiverId,
       groupId,
-      type: "text",
+      type: attachments?.length ? "attachment" : "text",
       timestamp: Date.now(),
       body,
+      attachments,
       mode: "RELAY",
       attempt: 1,
       sequence,
-    };
+    });
     await this.config.store.put({ message, status: "pending" });
     this.emit({ kind: "message", message: { message, status: "pending" } });
     let mode: DeliveryMode = (await this.ensureDirect(receiverId))
@@ -505,7 +526,28 @@ export class PeerClient {
     peerIdSchema.parse(receiverId);
     if (receiverId === this.peerId)
       throw new Error("cannot chat with yourself");
+    if (await this.config.store.isDirectBlocked?.(receiverId))
+      throw new Error("peer is blocked");
     await this.send(receiverId, body);
+  }
+  async sendDirectAttachment(
+    receiverId: string,
+    attachments: ChatAttachment[],
+    caption = "",
+  ): Promise<void> {
+    peerIdSchema.parse(receiverId);
+    if (receiverId === this.peerId)
+      throw new Error("cannot chat with yourself");
+    if (await this.config.store.isDirectBlocked?.(receiverId))
+      throw new Error("peer is blocked");
+    await this.send(
+      receiverId,
+      caption.trim(),
+      undefined,
+      randomUUID(),
+      undefined,
+      attachments,
+    );
   }
   async sendGroup(
     groupId: string,
@@ -545,6 +587,11 @@ export class PeerClient {
         (expectedSender && message.senderId !== expectedSender)
       )
         throw new Error("wrong receiver, sender or mode");
+      if (
+        !message.groupId &&
+        (await this.config.store.isDirectBlocked?.(message.senderId))
+      )
+        throw new Error("sender blocked");
       this.emit({ kind: "mode", peerId: message.senderId, mode });
       if (message.groupId)
         await this.authorizeGroup(message.groupId, message.senderId);

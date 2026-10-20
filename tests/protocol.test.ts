@@ -37,4 +37,51 @@ describe("protocol validation", () => {
       }).groupId,
     ).toBeNull();
   });
+  it("accepts bounded direct attachment metadata and rejects unsafe attachment packets", () => {
+    const attachment = {
+      id: "507f1f77bcf86cd799439011",
+      name: "anh.png",
+      mime: "image/png",
+      size: 32_000,
+    };
+    const message = parseMessage({
+      ...base(),
+      type: "attachment",
+      body: "",
+      attachments: [attachment],
+    });
+    expect(message.attachments).toEqual([attachment]);
+    expect(() =>
+      parseMessage({
+        ...base(),
+        type: "attachment",
+        body: "",
+      }),
+    ).toThrow("attachments required");
+    expect(() =>
+      parseMessage({
+        ...base(),
+        type: "attachment",
+        body: "",
+        groupId: randomUUID(),
+        attachments: [attachment],
+      }),
+    ).toThrow("attachments are only supported in direct chat");
+    expect(() =>
+      parseMessage({
+        ...base(),
+        type: "attachment",
+        body: "",
+        attachments: [{ ...attachment, name: "../secret.txt" }],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseMessage({
+        ...base(),
+        type: "attachment",
+        body: "",
+        attachments: [{ ...attachment, size: 512 * 1024 + 1 }],
+      }),
+    ).toThrow();
+  });
 });
