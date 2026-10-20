@@ -87,8 +87,7 @@ export function useAppActions({
     setMainView(view);
     if (view === "calendar") void run(calendarController.loadCalendar);
     if (view === "projects") void run(projectsController.loadProjects);
-    if (view === "messages")
-      void run(chatController.loadDirectConversations);
+    if (view === "messages") void run(chatController.loadDirectConversations);
   };
 
   const selectProjectTab = (nextTab: ProjectTab) => {

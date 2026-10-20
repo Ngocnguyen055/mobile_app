@@ -62,18 +62,15 @@ export function groupTasksByAssignee(
   });
 }
 
-export function orderTaskPeople<
-  T extends { userId: string; name?: string },
->(
+export function orderTaskPeople<T extends { userId: string; name?: string }>(
   people: T[],
   members: Pick<User, "_id" | "id" | "name">[],
   currentUserId: string,
 ) {
   const displayName = (person: T) =>
     person.name ||
-    members.find(
-      (member) => (member._id || member.id) === person.userId,
-    )?.name ||
+    members.find((member) => (member._id || member.id) === person.userId)
+      ?.name ||
     person.userId;
 
   return [...people].sort((left, right) => {

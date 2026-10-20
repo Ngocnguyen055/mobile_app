@@ -294,9 +294,9 @@ describe("MobileStore direct-message migration", () => {
 
     await store.deleteDirect(OTHER);
     expect(await store.listDirect(OTHER)).toEqual([]);
-    expect((await store.list()).some((item) => item.message.groupId === GROUP_ID)).toBe(
-      true,
-    );
+    expect(
+      (await store.list()).some((item) => item.message.groupId === GROUP_ID),
+    ).toBe(true);
     await store.removeDirectContact(OTHER);
     expect(await store.listDirectContacts()).toEqual([]);
     await store.setDirectBlocked(OTHER, false);

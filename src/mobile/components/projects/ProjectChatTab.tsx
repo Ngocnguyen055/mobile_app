@@ -75,13 +75,11 @@ function ProjectChatTab({
             <Text style={styles.muted}>
               {row.message.senderId === currentUserId
                 ? "Tôi"
-                : members.find(
-                    (member) => member._id === row.message.senderId,
-                  )?.name || row.message.senderId}{" "}
+                : members.find((member) => member._id === row.message.senderId)
+                    ?.name || row.message.senderId}{" "}
               →{" "}
-              {members.find(
-                (member) => member._id === row.message.receiverId,
-              )?.name || row.message.receiverId}{" "}
+              {members.find((member) => member._id === row.message.receiverId)
+                ?.name || row.message.receiverId}{" "}
               · {row.message.mode} · {row.status}
             </Text>
             <Text>{row.message.body}</Text>

@@ -190,11 +190,7 @@ function MessagesScreen({
                 <View style={styles.contactTitleRow}>
                   <Text style={styles.strong}>{contact.name}</Text>
                   <Text style={styles.muted}>
-                    {blocked
-                      ? "Đã chặn"
-                      : contactOnline
-                        ? "Online"
-                        : "Offline"}
+                    {blocked ? "Đã chặn" : contactOnline ? "Online" : "Offline"}
                   </Text>
                 </View>
                 <Text style={styles.muted}>{contact.email}</Text>
@@ -267,7 +263,9 @@ function MessagesScreen({
       {visibleMessages.map((row) => {
         const outgoing = row.message.senderId === currentUserId;
         const route =
-          row.status === "pending" ? "Đang chọn đường truyền" : row.message.mode;
+          row.status === "pending"
+            ? "Đang chọn đường truyền"
+            : row.message.mode;
         return (
           <View
             key={`${row.message.messageId}-${row.message.senderId}-${row.message.receiverId}`}

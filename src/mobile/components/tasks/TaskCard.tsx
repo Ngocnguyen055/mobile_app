@@ -90,29 +90,27 @@ function TaskCard({
       )}
       <View style={styles.wrap}>
         {canChangeTaskStatus(project, task, currentUserId) &&
-          (["todo", "doing", "done"] as Task["status"][]).map(
-            (nextStatus) => (
-              <Pressable
-                key={nextStatus}
-                onPress={() => onChangeStatus(task, nextStatus)}
-                disabled={task.status === nextStatus}
-                style={[
-                  styles.smallButton,
-                  task.status === nextStatus && styles.disabled,
-                ]}
-              >
-                <Text style={styles.buttonText}>
+          (["todo", "doing", "done"] as Task["status"][]).map((nextStatus) => (
+            <Pressable
+              key={nextStatus}
+              onPress={() => onChangeStatus(task, nextStatus)}
+              disabled={task.status === nextStatus}
+              style={[
+                styles.smallButton,
+                task.status === nextStatus && styles.disabled,
+              ]}
+            >
+              <Text style={styles.buttonText}>
+                {
                   {
-                    {
-                      todo: "Chưa làm",
-                      doing: "Đang làm",
-                      done: "Hoàn thành",
-                    }[nextStatus]
-                  }
-                </Text>
-              </Pressable>
-            ),
-          )}
+                    todo: "Chưa làm",
+                    doing: "Đang làm",
+                    done: "Hoàn thành",
+                  }[nextStatus]
+                }
+              </Text>
+            </Pressable>
+          ))}
         {!project.archived && project.permissions.manageTasks && (
           <Button label="Sửa" onPress={() => onEdit(task)} secondary />
         )}

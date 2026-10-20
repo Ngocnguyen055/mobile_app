@@ -10,11 +10,19 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type { CalendarEvent, Project, ProjectSummary, Task } from "../../services/api.ts";
+import type {
+  CalendarEvent,
+  Project,
+  ProjectSummary,
+  Task,
+} from "../../services/api.ts";
 import type { ReminderOffset } from "../../services/local.ts";
 import NativeDateTimeField from "../ui/NativeDateTimeField.tsx";
 import ReminderSelect, { REMINDER_OPTIONS } from "../ui/ReminderSelect.tsx";
-import { effectiveTaskStatus, taskStatusLabels } from "../../domain/projectPolicy.ts";
+import {
+  effectiveTaskStatus,
+  taskStatusLabels,
+} from "../../domain/projectPolicy.ts";
 import {
   calendarCreatePermissions,
   calendarProjectId,

@@ -1,7 +1,11 @@
 import { io, type Socket } from "socket.io-client";
-import { randomUUID } from "./uuid.ts";
 import {
-  parseMessage,
+  DirectTransport,
+  type SignalKind,
+  type SignalPacket,
+} from "./directTransport.ts";
+import { MessageDelivery } from "./messageDelivery.ts";
+import {
   peerIdSchema,
   peerDiscoverySchema,
   type ChatAttachment,
@@ -10,50 +14,19 @@ import {
   type Group,
   type PeerDiscovery,
 } from "./protocol.ts";
+import type { PeerConfig, PeerEvent } from "./peerTypes.ts";
 
-export type MessageStatus =
-  "pending" | "sent" | "delivered" | "failed" | "received";
-export type StoredMessage = { message: ChatMessage; status: MessageStatus };
-export type DirectChatContact = {
-  peerId: string;
-  name: string;
-  email: string;
-  updatedAt: number;
-};
-export interface ChatStore {
-  put(row: StoredMessage): Promise<void>;
-  mark(
-    messageId: string,
-    receiverId: string,
-    status: MessageStatus,
-  ): Promise<void>;
-  has(messageId: string, senderId: string): Promise<boolean>;
-  list(): Promise<StoredMessage[]>;
-  /** Optional local cache used to reject an already-open direct channel after blocking. */
-  isDirectBlocked?(peerId: string): Promise<boolean>;
-}
-export interface DirectChatStore extends ChatStore {
-  putDirect(row: StoredMessage): Promise<void>;
-  listDirect(peerId: string): Promise<StoredMessage[]>;
-  listDirectAttachments(peerId: string): Promise<StoredMessage[]>;
-  deleteDirect(peerId: string): Promise<void>;
-  setDirectBlocked(peerId: string, blocked: boolean): Promise<void>;
-  isDirectBlocked(peerId: string): Promise<boolean>;
-  listDirectBlocked(): Promise<string[]>;
-  saveDirectContact(contact: DirectChatContact): Promise<void>;
-  listDirectContacts(): Promise<DirectChatContact[]>;
-  removeDirectContact(peerId: string): Promise<void>;
-}
-type RTCFactory = new (config: RTCConfiguration) => RTCPeerConnection;
-type Event = {
-  kind: "message" | "presence" | "group" | "mode" | "log";
-  message?: StoredMessage;
-  peers?: string[];
-  group?: Group;
-  peerId?: string;
-  mode?: DeliveryMode;
-  text?: string;
-};
+export type {
+  ChatStore,
+  DirectChatContact,
+  DirectChatStore,
+  MessageStatus,
+  PeerConfig,
+  PeerEvent,
+  RTCFactory,
+  StoredMessage,
+} from "./peerTypes.ts";
+
 type Ack = {
   ok: boolean;
   error?: string;
@@ -63,47 +36,50 @@ type Ack = {
   group?: Group;
   peer?: PeerDiscovery;
 };
-type Pending = { resolve: () => void; timer: ReturnType<typeof setTimeout> };
-type Direct = {
-  pc: RTCPeerConnection;
-  channel?: RTCDataChannel;
-  ready: boolean;
-  opening?: Promise<boolean>;
-  candidates: RTCIceCandidateInit[];
-  failedUntil: number;
-};
-export type PeerConfig = {
-  peerId: string;
-  identityProof: string;
-  signalUrl: string;
-  relayUrl: string;
-  rtc: RTCFactory;
-  store: ChatStore;
-  forceRelay?: boolean;
-  iceServers?: RTCIceServer[];
-  directTimeoutMs?: number;
-  ackTimeoutMs?: number;
-  onEvent: (event: Event) => void;
-};
-
 export class PeerClient {
   readonly peerId: string;
   private signal?: Socket;
   private relay?: Socket;
   private peers: string[] = [];
   private groups = new Map<string, Group>();
-  private directs = new Map<string, Direct>();
-  private pending = new Map<string, Pending>();
-  private sequence = new Map<string, number>();
-  private sessionIds = new Map<string, string>();
+  private directTransport: DirectTransport;
+  private delivery: MessageDelivery;
   private heartbeat?: ReturnType<typeof setInterval>;
   private closed = false;
   forceRelay: boolean;
   constructor(private config: PeerConfig) {
     this.peerId = config.peerId;
     this.forceRelay = !!config.forceRelay;
+    this.directTransport = new DirectTransport({
+      peerId: this.peerId,
+      rtc: config.rtc,
+      iceServers: config.iceServers,
+      timeoutMs: config.directTimeoutMs,
+      sendSignal: (to, kind, data) => this.sendSignal(to, kind, data),
+      onMessage: (raw, expectedSender) => {
+        void this.receive(raw, "DIRECT", expectedSender);
+      },
+      onMode: (peerId, mode) => this.emit({ kind: "mode", peerId, mode }),
+      log: (text) => this.log(text),
+    });
+    this.delivery = new MessageDelivery({
+      peerId: this.peerId,
+      store: config.store,
+      ackTimeoutMs: config.ackTimeoutMs,
+      getGroup: (groupId) => this.groups.get(groupId),
+      syncProjectGroup: (projectId) => this.syncProjectGroup(projectId),
+      authorizeGroup: (groupId, otherPeerId) =>
+        this.authorizeGroup(groupId, otherPeerId),
+      selectMode: async (receiverId) =>
+        (await this.directTransport.ensure(receiverId, this.forceRelay))
+          ? "DIRECT"
+          : "RELAY",
+      transport: (message, mode) => this.transport(message, mode),
+      emit: (event) => this.emit(event),
+      log: (text) => this.log(text),
+    });
   }
-  private emit(event: Event) {
+  private emit(event: PeerEvent) {
     this.config.onEvent(event);
   }
   private log(text: string) {
@@ -158,18 +134,11 @@ export class PeerClient {
       else this.groups.delete(group.id);
       this.emit({ kind: "group", group });
     });
-    this.signal.on(
-      "signal:receive",
-      (packet: {
-        from: string;
-        kind: "request" | "offer" | "answer" | "ice";
-        data: unknown;
-      }) => {
-        void this.receiveSignal(packet).catch((error: unknown) =>
-          this.log(`signal error: ${String(error)}`),
-        );
-      },
-    );
+    this.signal.on("signal:receive", (packet: SignalPacket) => {
+      void this.directTransport
+        .receiveSignal(packet)
+        .catch((error: unknown) => this.log(`signal error: ${String(error)}`));
+    });
     this.signal.on("disconnect", () => this.log("signaling disconnected"));
     this.signal.connect();
     await new Promise<void>((resolve, reject) => {
@@ -262,77 +231,7 @@ export class PeerClient {
       throw new Error(result.error || "group change failed");
     return result.group;
   }
-  private direct(peerId: string): Direct {
-    let item = this.directs.get(peerId);
-    if (
-      item &&
-      ["failed", "closed"].includes(item.pc.connectionState) &&
-      item.failedUntil <= Date.now()
-    ) {
-      item.pc.close();
-      this.directs.delete(peerId);
-      item = undefined;
-    }
-    if (item) return item;
-    const pc = new this.config.rtc({
-      iceServers: this.config.iceServers || [
-        { urls: "stun:stun.l.google.com:19302" },
-      ],
-    });
-    item = { pc, ready: false, candidates: [], failedUntil: 0 };
-    this.directs.set(peerId, item);
-    pc.onicecandidate = (event) => {
-      if (event.candidate)
-        void this.sendSignal(peerId, "ice", event.candidate.toJSON()).catch(
-          (error) => this.log(`ICE send failed: ${String(error)}`),
-        );
-    };
-    pc.onconnectionstatechange = () => {
-      if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
-        item!.ready = false;
-        item!.failedUntil = Date.now() + 30_000;
-        this.emit({ kind: "mode", peerId, mode: "RELAY" });
-        this.log(`direct lost ${peerId}: ${pc.connectionState}`);
-      }
-    };
-    pc.ondatachannel = (event) =>
-      this.attachChannel(peerId, item!, event.channel);
-    return item;
-  }
-  private attachChannel(
-    peerId: string,
-    direct: Direct,
-    channel: RTCDataChannel,
-  ) {
-    direct.channel = channel;
-    channel.onopen = () => {
-      direct.ready = true;
-      direct.failedUntil = 0;
-      this.emit({ kind: "mode", peerId, mode: "DIRECT" });
-      this.log(`DIRECT open ${peerId}`);
-    };
-    channel.onclose = () => {
-      direct.ready = false;
-      direct.failedUntil = Date.now() + 30_000;
-      this.emit({ kind: "mode", peerId, mode: "RELAY" });
-      this.log(`DIRECT closed ${peerId}`);
-    };
-    channel.onerror = () => {
-      direct.ready = false;
-    };
-    channel.onmessage = (event) => {
-      try {
-        void this.receive(JSON.parse(String(event.data)), "DIRECT", peerId);
-      } catch (error) {
-        this.log(`bad direct message: ${String(error)}`);
-      }
-    };
-  }
-  private async sendSignal(
-    to: string,
-    kind: "request" | "offer" | "answer" | "ice",
-    data: unknown,
-  ) {
+  private async sendSignal(to: string, kind: SignalKind, data: unknown) {
     if (!this.signal?.connected) throw new Error("signaling unavailable");
     const result = await this.call(this.signal, "signal:send", {
       to,
@@ -340,80 +239,6 @@ export class PeerClient {
       data,
     });
     if (!result.ok) throw new Error(result.error || "signal rejected");
-  }
-  private async receiveSignal(packet: {
-    from: string;
-    kind: "request" | "offer" | "answer" | "ice";
-    data: unknown;
-  }): Promise<void> {
-    const { from, kind, data } = packet;
-    const direct = this.direct(from);
-    if (kind === "request") {
-      if (this.peerId < from && direct.pc.signalingState === "stable")
-        await this.makeOffer(from, direct);
-    } else if (kind === "offer") {
-      if (direct.pc.signalingState !== "stable") {
-        direct.pc.close();
-        this.directs.delete(from);
-        return this.receiveSignal(packet);
-      }
-      await direct.pc.setRemoteDescription(data as RTCSessionDescriptionInit);
-      await this.flushCandidates(direct);
-      const answer = await direct.pc.createAnswer();
-      await direct.pc.setLocalDescription(answer);
-      await this.sendSignal(from, "answer", answer);
-    } else if (kind === "answer") {
-      await direct.pc.setRemoteDescription(data as RTCSessionDescriptionInit);
-      await this.flushCandidates(direct);
-    } else if (kind === "ice") {
-      if (direct.pc.remoteDescription)
-        await direct.pc.addIceCandidate(data as RTCIceCandidateInit);
-      else direct.candidates.push(data as RTCIceCandidateInit);
-    }
-  }
-  private async flushCandidates(direct: Direct) {
-    for (const candidate of direct.candidates.splice(0))
-      await direct.pc.addIceCandidate(candidate);
-  }
-  private async makeOffer(peerId: string, direct: Direct) {
-    const channel = direct.pc.createDataChannel("chat", { ordered: true });
-    this.attachChannel(peerId, direct, channel);
-    const offer = await direct.pc.createOffer();
-    await direct.pc.setLocalDescription(offer);
-    await this.sendSignal(peerId, "offer", offer);
-  }
-  private async ensureDirect(peerId: string): Promise<boolean> {
-    if (this.forceRelay) return false;
-    const direct = this.direct(peerId);
-    if (direct.ready && direct.channel?.readyState === "open") return true;
-    if (direct.failedUntil > Date.now()) return false;
-    if (direct.opening) return direct.opening;
-    direct.opening = (async () => {
-      try {
-        if (this.peerId < peerId && direct.pc.signalingState === "stable") {
-          await this.makeOffer(peerId, direct);
-        } else if (
-          this.peerId > peerId &&
-          direct.pc.signalingState === "stable"
-        ) {
-          await this.sendSignal(peerId, "request", null);
-        }
-        const deadline = Date.now() + (this.config.directTimeoutMs || 5000);
-        while (Date.now() < deadline && !direct.ready)
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        if (!direct.ready) {
-          direct.failedUntil = Date.now() + 30_000;
-          this.log(`DIRECT timeout ${peerId}; RELAY fallback`);
-        }
-        return direct.ready;
-      } catch (error) {
-        this.log(`DIRECT failed ${peerId}: ${String(error)}`);
-        return false;
-      } finally {
-        direct.opening = undefined;
-      }
-    })();
-    return direct.opening;
   }
   private async transport(
     message: ChatMessage,
@@ -425,10 +250,7 @@ export class PeerClient {
     if (packet.groupId)
       await this.authorizeGroup(packet.groupId, packet.receiverId);
     if (mode === "DIRECT") {
-      const channel = this.directs.get(packet.receiverId)?.channel;
-      if (!channel || channel.readyState !== "open")
-        throw new Error("direct unavailable");
-      channel.send(JSON.stringify(packet));
+      this.directTransport.send(packet.receiverId, packet);
       this.log(`DIRECT SEND ${packet.messageId} -> ${packet.receiverId}`);
     } else {
       if (!this.relay?.connected) throw new Error("relay unavailable");
@@ -441,217 +263,45 @@ export class PeerClient {
     receiverId: string,
     body: string,
     groupId?: string | null,
-    messageId = randomUUID(),
+    messageId?: string,
     sequenceOverride?: number,
     attachments?: ChatAttachment[],
   ): Promise<void> {
-    if (!body.trim() && !attachments?.length) throw new Error("empty message");
-    if (attachments?.length && groupId)
-      throw new Error("attachments are only supported in direct chat");
-    if (groupId && !this.groups.get(groupId)?.members.includes(receiverId))
-      throw new Error("receiver not in group");
-    const key = groupId || [this.peerId, receiverId].sort().join(":");
-    const sequence = sequenceOverride ?? (this.sequence.get(key) || 0) + 1;
-    if (sequenceOverride === undefined) this.sequence.set(key, sequence);
-    let sessionId = groupId || this.sessionIds.get(key);
-    if (!sessionId) {
-      sessionId = randomUUID();
-      this.sessionIds.set(key, sessionId);
-    }
-    const message = parseMessage({
-      messageId,
-      sessionId,
-      senderId: this.peerId,
+    return this.delivery.send(
       receiverId,
-      groupId,
-      type: attachments?.length ? "attachment" : "text",
-      timestamp: Date.now(),
       body,
+      groupId,
+      messageId,
+      sequenceOverride,
       attachments,
-      mode: "RELAY",
-      attempt: 1,
-      sequence,
-    });
-    await this.config.store.put({ message, status: "pending" });
-    this.emit({ kind: "message", message: { message, status: "pending" } });
-    let mode: DeliveryMode = (await this.ensureDirect(receiverId))
-      ? "DIRECT"
-      : "RELAY";
-    this.emit({ kind: "mode", peerId: receiverId, mode });
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const packet = { ...message, mode, attempt };
-      try {
-        const ack = new Promise<void>((resolve, reject) => {
-          const key = `${messageId}:${receiverId}`;
-          const timer = setTimeout(() => {
-            this.pending.delete(key);
-            reject(new Error("ACK timeout"));
-          }, this.config.ackTimeoutMs || 2000);
-          this.pending.set(key, { resolve, timer });
-        });
-        void ack.catch(() => {});
-        await this.transport(packet, mode);
-        await this.config.store.put({ message: packet, status: "sent" });
-        this.emit({
-          kind: "message",
-          message: { message: packet, status: "sent" },
-        });
-        await ack;
-        await this.config.store.mark(messageId, receiverId, "delivered");
-        this.emit({
-          kind: "message",
-          message: { message: packet, status: "delivered" },
-        });
-        return;
-      } catch (error) {
-        const pending = this.pending.get(`${messageId}:${receiverId}`);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pending.delete(`${messageId}:${receiverId}`);
-        }
-        this.log(`send attempt ${attempt} failed: ${String(error)}`);
-        mode = "RELAY";
-        this.emit({ kind: "mode", peerId: receiverId, mode });
-      }
-    }
-    await this.config.store.mark(messageId, receiverId, "failed");
-    this.emit({
-      kind: "message",
-      message: { message: { ...message, mode }, status: "failed" },
-    });
-    throw new Error(`delivery failed to ${receiverId}`);
+    );
   }
   /** Personal conversation; DIRECT is attempted first, with RELAY fallback. */
   async sendDirect(receiverId: string, body: string): Promise<void> {
-    peerIdSchema.parse(receiverId);
-    if (receiverId === this.peerId)
-      throw new Error("cannot chat with yourself");
-    if (await this.config.store.isDirectBlocked?.(receiverId))
-      throw new Error("peer is blocked");
-    await this.send(receiverId, body);
+    return this.delivery.sendDirect(receiverId, body);
   }
   async sendDirectAttachment(
     receiverId: string,
     attachments: ChatAttachment[],
     caption = "",
   ): Promise<void> {
-    peerIdSchema.parse(receiverId);
-    if (receiverId === this.peerId)
-      throw new Error("cannot chat with yourself");
-    if (await this.config.store.isDirectBlocked?.(receiverId))
-      throw new Error("peer is blocked");
-    await this.send(
-      receiverId,
-      caption.trim(),
-      undefined,
-      randomUUID(),
-      undefined,
-      attachments,
-    );
+    return this.delivery.sendDirectAttachment(receiverId, attachments, caption);
   }
   async sendGroup(
     groupId: string,
     body: string,
   ): Promise<Record<string, string>> {
-    const group = this.groups.get(groupId);
-    if (!group || !group.members.includes(this.peerId))
-      throw new Error("not a group member");
-    const current = group.projectId
-      ? await this.syncProjectGroup(group.projectId)
-      : group;
-    if (current.archived) throw new Error("project archived");
-    const messageId = randomUUID();
-    const sequence = (this.sequence.get(groupId) || 0) + 1;
-    this.sequence.set(groupId, sequence);
-    const results = await Promise.allSettled(
-      current.members
-        .filter((id) => id !== this.peerId)
-        .map((id) => this.send(id, body, groupId, messageId, sequence)),
-    );
-    return Object.fromEntries(
-      current.members
-        .filter((id) => id !== this.peerId)
-        .map((id, index) => [id, results[index].status]),
-    );
+    return this.delivery.sendGroup(groupId, body);
   }
-  private async receive(
-    raw: unknown,
-    mode: DeliveryMode,
-    expectedSender?: string,
-  ) {
-    try {
-      const message = parseMessage(raw);
-      if (
-        message.receiverId !== this.peerId ||
-        message.mode !== mode ||
-        (expectedSender && message.senderId !== expectedSender)
-      )
-        throw new Error("wrong receiver, sender or mode");
-      if (
-        !message.groupId &&
-        (await this.config.store.isDirectBlocked?.(message.senderId))
-      )
-        throw new Error("sender blocked");
-      this.emit({ kind: "mode", peerId: message.senderId, mode });
-      if (message.groupId)
-        await this.authorizeGroup(message.groupId, message.senderId);
-      if (message.type === "ack") {
-        const pending = this.pending.get(
-          `${message.ackFor}:${message.senderId}`,
-        );
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pending.delete(`${message.ackFor}:${message.senderId}`);
-          pending.resolve();
-        }
-        return;
-      }
-      if (!message.groupId) {
-        const key = [this.peerId, message.senderId].sort().join(":");
-        if (!this.sessionIds.has(key))
-          this.sessionIds.set(key, message.sessionId);
-      }
-      const duplicate = await this.config.store.has(
-        message.messageId,
-        message.senderId,
-      );
-      if (!duplicate) {
-        await this.config.store.put({ message, status: "received" });
-        this.emit({
-          kind: "message",
-          message: { message, status: "received" },
-        });
-      }
-      const ack: ChatMessage = {
-        messageId: randomUUID(),
-        sessionId: message.sessionId,
-        senderId: this.peerId,
-        receiverId: message.senderId,
-        groupId: message.groupId,
-        type: "ack",
-        timestamp: Date.now(),
-        body: "",
-        mode,
-        ackFor: message.messageId,
-        attempt: 1,
-        sequence: message.sequence,
-      };
-      try {
-        await this.transport(ack, mode);
-      } catch {
-        await this.transport({ ...ack, mode: "RELAY" }, "RELAY");
-      }
-    } catch (error) {
-      this.log(`receive rejected: ${String(error)}`);
-    }
+  /** Single inbound boundary kept here so tests can inject a forged transport packet. */
+  private receive(raw: unknown, mode: DeliveryMode, expectedSender?: string) {
+    return this.delivery.receive(raw, mode, expectedSender);
   }
   close() {
     this.closed = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
-    for (const pending of this.pending.values()) clearTimeout(pending.timer);
-    this.pending.clear();
-    for (const direct of this.directs.values()) direct.pc.close();
-    this.directs.clear();
+    this.delivery.close();
+    this.directTransport.close();
     this.signal?.disconnect();
     this.relay?.disconnect();
   }

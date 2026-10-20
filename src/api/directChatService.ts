@@ -111,9 +111,9 @@ export async function getChatUser(userId: string): Promise<ChatUser | null> {
 export async function listBlockedChatUsers(
   requesterId: string,
 ): Promise<ChatUser[]> {
-  const ids = (await UserBlock.distinct("blocked", { blocker: requesterId })).map(
-    String,
-  );
+  const ids = (
+    await UserBlock.distinct("blocked", { blocker: requesterId })
+  ).map(String);
   if (!ids.length) return [];
   const rows = await User.find({ _id: { $in: ids } })
     .select("name email")

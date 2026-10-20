@@ -41,12 +41,7 @@ export function useAuth({ onAuthenticated }: UseAuthOptions) {
     })();
   }, []);
 
-  const auth = async ({
-    mode,
-    name,
-    email,
-    password,
-  }: AuthCredentials) => {
+  const auth = async ({ mode, name, email, password }: AuthCredentials) => {
     const register = mode === "register";
     const data = await api<{ token: string; user: User }>(
       register ? "/auth/register" : "/auth/login",

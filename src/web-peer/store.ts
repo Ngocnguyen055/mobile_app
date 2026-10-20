@@ -125,7 +125,9 @@ export class WebStore implements DirectChatStore {
     localStorage.setItem(this.blockedKey, JSON.stringify([...rows].sort()));
   }
   async isDirectBlocked(peerId: string) {
-    return (await this.listDirectBlocked()).includes(peerIdSchema.parse(peerId));
+    return (await this.listDirectBlocked()).includes(
+      peerIdSchema.parse(peerId),
+    );
   }
   async listDirectBlocked() {
     try {
@@ -133,7 +135,9 @@ export class WebStore implements DirectChatStore {
         localStorage.getItem(this.blockedKey) || "[]",
       ) as unknown;
       return Array.isArray(rows)
-        ? rows.filter((row): row is string => peerIdSchema.safeParse(row).success)
+        ? rows.filter(
+            (row): row is string => peerIdSchema.safeParse(row).success,
+          )
         : [];
     } catch {
       return [];

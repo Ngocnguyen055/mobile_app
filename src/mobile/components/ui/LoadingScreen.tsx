@@ -7,10 +7,7 @@ import { colors } from "../../styles/theme.ts";
 export default function LoadingScreen() {
   return (
     <SafeAreaView style={styles.page}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor={colors.background}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       <View style={styles.loading}>
         <View style={styles.loadingLogo}>
           <Text style={styles.loadingLogoText}>✓</Text>

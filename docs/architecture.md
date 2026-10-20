@@ -16,6 +16,34 @@ flowchart LR
 
 Signaling chỉ chuyển `request`, `offer`, `answer`, `ice`, đăng ký, presence và dữ liệu nhóm/quyền; không nhận chat envelope. Relay chuyển envelope khi mode `RELAY` và ghi `FORWARD messageId`. API xử lý dữ liệu Mobile và cung cấp membership/archive cho signaling, không nhận hoặc lưu chat body. Android dùng user Mongo `_id` làm Peer ID; web demo dùng ID tự đặt và secret lưu trình duyệt. JWT của API chứng thực Android ở signaling; token ngắn hạn do signaling cấp chứng thực kết nối relay.
 
+## Kiến trúc mã DS01
+
+```mermaid
+flowchart TD
+  WebMain[web-peer/main.tsx\nbootstrap] --> WebApp[App.tsx\nrender]
+  WebApp --> WebHook[useWebPeer.ts\nUI state + lifecycle]
+  WebHook --> Peer[shared/peer.ts\npeer facade]
+  Peer --> Direct[directTransport.ts\nICE + WebRTC DataChannel]
+  Peer --> Delivery[messageDelivery.ts\nID + order + ACK/retry/dedupe]
+  Delivery --> Store[ChatStore boundary\nlocalStorage / SQLite]
+  Peer --> Protocol[protocol.ts\nZod envelope schemas]
+  SignalIndex[signaling/index.ts\ncomposition root] --> PeerHandlers[peerHandlers.ts\nregister + heartbeat + discovery]
+  SignalIndex --> GroupHandlers[groupHandlers.ts\ngroup membership + version]
+  SignalIndex --> WebRtcHandlers[webrtcHandlers.ts\nSDP/ICE forwarding only]
+  SignalIndex --> Maintenance[maintenance.ts\ntimeout + project sync]
+  Relay[relay/index.ts\nvalidate + route + log]
+```
+
+- `shared/peer.ts` là facade mà Android và web cùng gọi. File này ghép socket signaling, socket relay, transport trực tiếp và bộ giao tin; chi tiết ICE hoặc retry không nằm trong UI.
+- `shared/directTransport.ts` chỉ quản lý `RTCPeerConnection`, SDP/ICE, DataChannel và timeout chọn DIRECT. Module này không biết SQLite, nhóm hay ACK.
+- `shared/messageDelivery.ts` tạo Message ID/Session ID/sequence, chờ ACK, retry tối đa, chống trùng và multi-unicast nhóm. Nó chỉ gọi transport qua callback nên không phụ thuộc Socket.IO hay React Native.
+- `shared/peerTypes.ts` định nghĩa hợp đồng `ChatStore`, cấu hình và event. Web dùng localStorage, Android dùng SQLite nhưng lõi giao tin không cần biết cách lưu cụ thể.
+- `signaling/index.ts` chỉ dựng dependency và HTTP/Socket.IO server. Handler peer, nhóm và WebRTC được tách theo loại sự kiện; job nền nằm trong `maintenance.ts`.
+- `web-peer/main.tsx` chỉ mount React. `useWebPeer.ts` giữ lifecycle của `PeerClient`; `App.tsx` chỉ render trạng thái và thao tác demo.
+- `relay/index.ts` còn nhỏ và có một nhiệm vụ: xác thực token, kiểm tra envelope/quyền, ánh xạ Peer ID sang socket đích, chuyển tiếp và ghi log. Vì vậy chưa cần tách thêm lớp.
+
+Chiều phụ thuộc đi từ UI/service entrypoint vào `PeerClient`, rồi xuống transport, delivery, protocol và store interface. `shared` không import mobile hoặc web; signaling không import giao diện; relay không gọi vào code UI. Ranh giới này cho phép thay localStorage bằng SQLite và thay WebRTC implementation trình duyệt bằng `react-native-webrtc` mà giữ nguyên quy tắc giao tin.
+
 ## Kiến trúc mã mobile
 
 `src/mobile/App.tsx` là composition root mỏng: khởi tạo các controller hook, nối dependency giữa chúng và truyền kết quả vào `screens/AppRouter.tsx`. Màn hình không gọi vòng ngược về `App`; chúng nhận state và callback qua props rồi ghép các component theo miền.

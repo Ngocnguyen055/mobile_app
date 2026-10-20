@@ -1,11 +1,11 @@
 import React from "react";
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-} from "react-native";
+import { SafeAreaView, ScrollView, StatusBar } from "react-native";
 
-import type { CalendarEvent, InboxNotification, User } from "../services/api.ts";
+import type {
+  CalendarEvent,
+  InboxNotification,
+  User,
+} from "../services/api.ts";
 import CalendarPanel from "../components/calendar/CalendarPanel.tsx";
 import NotificationsScreen from "./NotificationsScreen.tsx";
 import BottomNav from "../components/ui/BottomNav.tsx";
@@ -110,17 +110,12 @@ export default function AppRouter({
       onProjectNameChange={projectsController.setProjectName}
       onProjectKindChange={projectsController.setProjectKind}
       onRefresh={() => runAction(projectsController.loadProjects)}
-      onOpenProject={(projectId) =>
-        runAction(() => onOpenProject(projectId))
-      }
+      onOpenProject={(projectId) => runAction(() => onOpenProject(projectId))}
       onCreateProject={() => runAction(projectsController.createProject)}
     />
   );
 
-  const handleContentSizeChange = (
-    _width: number,
-    _height: number,
-  ) => {
+  const handleContentSizeChange = (_width: number, _height: number) => {
     if (mainView === "messages" && chatController.directContact)
       contentScroll.current?.scrollToEnd({ animated: true });
   };
@@ -185,7 +180,9 @@ export default function AppRouter({
             runAction(() => chatController.downloadChatAttachment(attachment))
           }
           onToggleBlock={() =>
-            chatController.confirmChangeDirectBlock(chatController.directContact!)
+            chatController.confirmChangeDirectBlock(
+              chatController.directContact!,
+            )
           }
           onDeleteConversation={() =>
             chatController.confirmDeleteDirectConversation(
@@ -286,9 +283,7 @@ export default function AppRouter({
             }
             onShowContactActions={chatController.showDirectConversationActions}
             onDownloadAttachment={(attachment) =>
-              runAction(() =>
-                chatController.downloadChatAttachment(attachment),
-              )
+              runAction(() => chatController.downloadChatAttachment(attachment))
             }
             onToggleForceRelay={() => {
               const forceRelay = !chatController.forceRelay;
@@ -319,7 +314,9 @@ export default function AppRouter({
         <DirectComposer
           contact={chatController.directContact}
           body={chatController.directMessageBody}
-          online={chatController.online.includes(chatController.directContact.id)}
+          online={chatController.online.includes(
+            chatController.directContact.id,
+          )}
           blocked={chatController.blockedPeerIds.includes(
             chatController.directContact.id,
           )}

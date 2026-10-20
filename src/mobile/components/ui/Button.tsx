@@ -27,7 +27,9 @@ export default function Button({
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.buttonText, secondary && styles.secondaryButtonText]}>
+      <Text
+        style={[styles.buttonText, secondary && styles.secondaryButtonText]}
+      >
         {label}
       </Text>
     </Pressable>

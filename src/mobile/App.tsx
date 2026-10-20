@@ -6,10 +6,7 @@ import {
   reconcileReminders,
 } from "./services/local.ts";
 import AuthScreen from "./screens/AuthScreen.tsx";
-import {
-  type MainView,
-  type ProjectTab,
-} from "./types/index.ts";
+import { type MainView, type ProjectTab } from "./types/index.ts";
 import AppRouter from "./screens/AppRouter.tsx";
 import { useChat } from "./hooks/useChat.ts";
 import { useAuth } from "./hooks/useAuth.ts";

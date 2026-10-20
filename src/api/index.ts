@@ -241,9 +241,7 @@ export function createApi() {
   );
   app.get("/internal/direct-chat/authorize", internalAuth, async (req, res) => {
     const input = check(
-      z
-        .object({ senderId: objectId, receiverId: objectId })
-        .strict(),
+      z.object({ senderId: objectId, receiverId: objectId }).strict(),
       req.query,
     );
     return res.json(

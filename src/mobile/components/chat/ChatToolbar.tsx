@@ -35,7 +35,8 @@ function ChatToolbar({
             <View style={styles.contactText}>
               <Text style={styles.contextTitle}>{contact.name}</Text>
               <Text style={styles.contextSubtitle}>
-                {contact.email} · {blocked ? "Đã chặn" : online ? "Online" : "Offline"}
+                {contact.email} ·{" "}
+                {blocked ? "Đã chặn" : online ? "Online" : "Offline"}
               </Text>
             </View>
           </View>

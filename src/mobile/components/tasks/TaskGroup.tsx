@@ -78,7 +78,9 @@ function TaskGroup({
               </View>
             )}
           </View>
-          <Text style={styles.taskGroupMeta}>{group.tasks.length} công việc</Text>
+          <Text style={styles.taskGroupMeta}>
+            {group.tasks.length} công việc
+          </Text>
         </View>
         <View style={styles.taskGroupChevron}>
           <Text style={styles.taskGroupChevronText}>

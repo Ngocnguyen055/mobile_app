@@ -191,8 +191,7 @@ export class MobileStore implements DirectChatStore {
   async setDirectBlocked(peerId: string, blocked: boolean): Promise<void> {
     const currentPeerId = peerIdSchema.parse(this.scope);
     const otherPeerId = peerIdSchema.parse(peerId);
-    if (currentPeerId === otherPeerId)
-      throw new Error("cannot block yourself");
+    if (currentPeerId === otherPeerId) throw new Error("cannot block yourself");
     const conn = await db();
     if (!blocked) {
       await conn.runAsync(

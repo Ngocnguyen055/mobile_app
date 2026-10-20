@@ -192,8 +192,7 @@ function TaskEditor({
                     {selectedAssignee?._id === currentUserId ? " (Bạn)" : ""}
                   </Text>
                   <Text style={styles.assigneeSelectHint} numberOfLines={1}>
-                    {selectedAssignee?.email ||
-                      "Chọn một thành viên phụ trách"}
+                    {selectedAssignee?.email || "Chọn một thành viên phụ trách"}
                   </Text>
                 </View>
                 <Text style={styles.assigneeSelectChevron}>

@@ -128,15 +128,13 @@ describe("hierarchical access boundaries", () => {
     vi.spyOn(mongoose.connection, "transaction").mockImplementation(
       async (action) => action(session),
     );
-    const lock = vi
-      .spyOn(Project, "updateOne")
-      .mockResolvedValue({
-        acknowledged: true,
-        matchedCount: 1,
-        modifiedCount: 1,
-        upsertedCount: 0,
-        upsertedId: null,
-      });
+    const lock = vi.spyOn(Project, "updateOne").mockResolvedValue({
+      acknowledged: true,
+      matchedCount: 1,
+      modifiedCount: 1,
+      upsertedCount: 0,
+      upsertedId: null,
+    });
     const mutation = vi.fn(async (_access, activeSession) => {
       expect(lock).toHaveBeenCalledTimes(2);
       expect(activeSession).toBe(session);

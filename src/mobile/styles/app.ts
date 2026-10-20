@@ -540,7 +540,11 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  contactAvatarText: { color: colors.primaryDark, fontSize: 17, fontWeight: "900" },
+  contactAvatarText: {
+    color: colors.primaryDark,
+    fontSize: 17,
+    fontWeight: "900",
+  },
   contactText: { flex: 1, minWidth: 0 },
   contactTitleRow: {
     flexDirection: "row",
@@ -549,7 +553,11 @@ export const styles = StyleSheet.create({
     gap: 8,
   },
   contactPreview: { color: colors.textSoft, marginTop: 4 },
-  openConversationIcon: { color: colors.primary, fontSize: 24, fontWeight: "700" },
+  openConversationIcon: {
+    color: colors.primary,
+    fontSize: 24,
+    fontWeight: "700",
+  },
   longPressHint: {
     color: colors.textSoft,
     fontSize: 11,
@@ -599,7 +607,12 @@ export const styles = StyleSheet.create({
   messageFailed: { backgroundColor: colors.dangerSoft, borderColor: "#F5B4BB" },
   messageBody: { color: colors.text, fontSize: 15, lineHeight: 20 },
   messageMeta: { color: colors.textSoft, fontSize: 10 },
-  chatImage: { width: 210, height: 150, borderRadius: 10, backgroundColor: colors.surfaceMuted },
+  chatImage: {
+    width: 210,
+    height: 150,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+  },
   attachmentName: { color: colors.text, fontSize: 13, fontWeight: "700" },
   fileAttachment: {
     minWidth: 210,
@@ -697,7 +710,11 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chatInfoImage: { width: "100%", height: 112, backgroundColor: colors.surfaceMuted },
+  chatInfoImage: {
+    width: "100%",
+    height: 112,
+    backgroundColor: colors.surfaceMuted,
+  },
   chatImageTileName: {
     color: colors.text,
     fontSize: 11,
@@ -839,9 +856,26 @@ export const styles = StyleSheet.create({
     ...cardShadow,
   },
   projectSearchIcon: { color: colors.primary, fontSize: 22, fontWeight: "800" },
-  projectSearchInput: { flex: 1, minHeight: 46, color: colors.text, fontSize: 14, paddingVertical: 0 },
-  projectSearchClear: { width: 28, height: 28, borderRadius: 10, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center" },
-  projectSearchClearText: { color: colors.textSoft, fontSize: 20, lineHeight: 22 },
+  projectSearchInput: {
+    flex: 1,
+    minHeight: 46,
+    color: colors.text,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  projectSearchClear: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  projectSearchClearText: {
+    color: colors.textSoft,
+    fontSize: 20,
+    lineHeight: 22,
+  },
   projectCard: { flexDirection: "row", alignItems: "center", gap: 12 },
   cardPressed: { transform: [{ scale: 0.99 }], opacity: 0.9 },
   projectIcon: {

@@ -100,7 +100,8 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
             const otherId =
               message.senderId === id ? message.receiverId : message.senderId;
             void local.listDirectContacts().then(async (contacts) => {
-              if (contacts.some((contact) => contact.peerId === otherId)) return;
+              if (contacts.some((contact) => contact.peerId === otherId))
+                return;
               try {
                 const contact = await loadChatUser(otherId);
                 await local.saveDirectContact({
@@ -211,7 +212,9 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       );
       try {
         const blockedUsers = await loadBlockedChatUsers();
-        const serverBlocked = new Set(blockedUsers.map((contact) => contact.id));
+        const serverBlocked = new Set(
+          blockedUsers.map((contact) => contact.id),
+        );
         const localBlocked = await service.blockedPeers();
         await Promise.all([
           ...blockedUsers.map(async (contact) => {
@@ -241,7 +244,9 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
         const message = row.message;
         if (message.groupId || message.type === "ack") continue;
         const otherId =
-          message.senderId === user!._id ? message.receiverId : message.senderId;
+          message.senderId === user!._id
+            ? message.receiverId
+            : message.senderId;
         if (otherId !== user!._id && !contacts.has(otherId))
           missingPeerIds.add(otherId);
       }
@@ -383,7 +388,8 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
         {
           text: blocked ? "Bỏ chặn" : "Chặn",
           style: blocked ? "default" : "destructive",
-          onPress: () => void execute(() => changeDirectBlock(contact, !blocked)),
+          onPress: () =>
+            void execute(() => changeDirectBlock(contact, !blocked)),
         },
       ],
     );

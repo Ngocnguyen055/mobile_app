@@ -1,16 +1,14 @@
 import React from "react";
-import {
-  Keyboard,
-  Platform,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { Keyboard, Platform, Pressable, Text, View } from "react-native";
 import {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { formatViDate, formatViDateTime, parseViDateTime } from "../../utils/calendar.ts";
+import {
+  formatViDate,
+  formatViDateTime,
+  parseViDateTime,
+} from "../../utils/calendar.ts";
 import { styles } from "../../styles/dateTimeField.ts";
 
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";

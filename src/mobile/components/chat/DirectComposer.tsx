@@ -28,7 +28,8 @@ function DirectComposer({
   onSend,
   onAttach,
 }: DirectComposerProps) {
-  const canSend = online && !blocked && canSendDirect(body, contact.id, sending);
+  const canSend =
+    online && !blocked && canSendDirect(body, contact.id, sending);
   const canAttach = online && !blocked && !sending && !uploading;
 
   return (
@@ -71,9 +72,7 @@ function DirectComposer({
         onPress={onSend}
         style={[styles.chatSendButton, !canSend && styles.disabled]}
       >
-        <Text style={styles.buttonText}>
-          {sending ? "Đang gửi…" : "Gửi"}
-        </Text>
+        <Text style={styles.buttonText}>{sending ? "Đang gửi…" : "Gửi"}</Text>
       </Pressable>
     </View>
   );

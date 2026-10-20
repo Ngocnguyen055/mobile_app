@@ -19,9 +19,7 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
 
   const setProjectRows = (rows: Project[]) => {
     setProjects(rows);
-    setProjectPage((current) =>
-      Math.min(current, projectPageCount(rows) - 1),
-    );
+    setProjectPage((current) => Math.min(current, projectPageCount(rows) - 1));
   };
 
   const loadProjects = async () => {

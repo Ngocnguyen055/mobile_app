@@ -1,19 +1,24 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { ScrollView } from "react-native";
 
-import { api, json, type Project, type Task, type User } from "../services/api.ts";
+import {
+  api,
+  json,
+  type Project,
+  type Task,
+  type User,
+} from "../services/api.ts";
 import {
   formatViDate,
   parseViDateTime,
   toViDateTimeInput,
 } from "../utils/calendar.ts";
 import { calendarProjectId } from "../domain/calendarPolicy.ts";
-import { cancelReminder, syncReminder, type ReminderOffset } from "../services/local.ts";
+import {
+  cancelReminder,
+  syncReminder,
+  type ReminderOffset,
+} from "../services/local.ts";
 import { canChangeTaskStatus } from "../domain/projectPolicy.ts";
 import type { ProjectTab } from "../types/index.ts";
 
@@ -231,8 +236,7 @@ export function useTasks({
   const openTaskInList = async (task: Task) => {
     const projectId = calendarProjectId(task.project);
     if (!projectId) throw new Error("Task không còn thuộc dự án hợp lệ.");
-    if (projectRef.current?._id !== projectId)
-      await onReloadProject(projectId);
+    if (projectRef.current?._id !== projectId) await onReloadProject(projectId);
     const groupKey = userIdOf(task.assignee) || "unassigned";
     resetTaskForm();
     setTaskEditorVisible(false);

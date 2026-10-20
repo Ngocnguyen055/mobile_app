@@ -179,9 +179,7 @@ export default function ProjectDetailScreen({
             [userId]: !current[userId],
           }))
         }
-        onOpenProject={(projectId) =>
-          runAction(() => onOpenProject(projectId))
-        }
+        onOpenProject={(projectId) => runAction(() => onOpenProject(projectId))}
         onOpenTask={(task) =>
           runAction(() => tasksController.openTaskInList(task))
         }

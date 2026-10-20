@@ -99,9 +99,7 @@ export function installDirectChatRoutes(app: Express) {
           data: file.buffer,
         })),
       );
-      return res
-        .status(201)
-        .json(attachments.map(chatAttachmentMetadata));
+      return res.status(201).json(attachments.map(chatAttachmentMetadata));
     },
   );
 

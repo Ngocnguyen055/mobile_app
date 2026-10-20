@@ -25,7 +25,8 @@ const httpDirectChatAuthorizer: DirectChatAuthorizer = async (
   senderId,
   receiverId,
 ) => {
-  if (!accountPeerId.test(senderId) || !accountPeerId.test(receiverId)) return true;
+  if (!accountPeerId.test(senderId) || !accountPeerId.test(receiverId))
+    return true;
   const base = process.env.API_INTERNAL_URL || "http://127.0.0.1:4000";
   const query = new URLSearchParams({ senderId, receiverId });
   const response = await fetch(

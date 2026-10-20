@@ -49,13 +49,10 @@ export function useReminders({
     void (async () => {
       try {
         if (Platform.OS === "android")
-          await Notifications.setNotificationChannelAsync(
-            REMINDER_CHANNEL_ID,
-            {
-              name: "Nhắc lịch và deadline",
-              importance: Notifications.AndroidImportance.HIGH,
-            },
-          );
+          await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
+            name: "Nhắc lịch và deadline",
+            importance: Notifications.AndroidImportance.HIGH,
+          });
         const current = await Notifications.getPermissionsAsync();
         const permission = current.granted
           ? current

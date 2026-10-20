@@ -7,7 +7,7 @@ import {
 } from "../src/mobile/utils/taskGroups.ts";
 
 const task = (id: string, assignee?: Task["assignee"]) =>
-  ({ _id: id, title: id, assignee } as Task);
+  ({ _id: id, title: id, assignee }) as Task;
 
 describe("task assignee groups", () => {
   it("groups by assignee, puts the current user first, and unassigned last", () => {
@@ -65,11 +65,11 @@ describe("task assignee groups", () => {
       { _id: "two", name: "An", email: "an@school.test" },
     ];
 
-    expect(filterTaskMembers(members, "nguyen").map((member) => member._id)).toEqual([
-      "one",
-    ]);
-    expect(filterTaskMembers(members, "school").map((member) => member._id)).toEqual([
-      "two",
-    ]);
+    expect(
+      filterTaskMembers(members, "nguyen").map((member) => member._id),
+    ).toEqual(["one"]);
+    expect(
+      filterTaskMembers(members, "school").map((member) => member._id),
+    ).toEqual(["two"]);
   });
 });

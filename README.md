@@ -330,14 +330,14 @@ Xem `deploy/internet.env.example`, `deploy/Caddyfile.example` và `docs/architec
   - `utils`: hàm biến đổi/tính toán dùng lại;
   - `styles`: toàn bộ `StyleSheet` theo từng miền;
   - `types`: kiểu dùng chung trong mobile.
-- `src/web-peer`: peer web DS01, lịch sử localStorage, log và nút ép RELAY.
+- `src/web-peer`: peer web DS01; `main.tsx` chỉ bootstrap, `App.tsx` render UI, `useWebPeer.ts` quản lý lifecycle và `store.ts` lưu localStorage.
 - `src/api`: REST API tài khoản/dự án/task/lịch/thảo luận/tệp/nguồn lực.
-- `src/signaling`: peer discovery, heartbeat, nhóm và SDP/ICE.
+- `src/signaling`: composition root cùng các handler riêng cho đăng ký/discovery, nhóm, SDP/ICE và maintenance heartbeat.
 - `src/relay`: chuyển đúng đích và ACK envelope qua Socket.IO.
-- `src/shared`: schema message và PeerClient chung.
+- `src/shared`: protocol/schema dùng chung, `PeerClient` facade, WebRTC direct transport, ACK/retry/dedup delivery và hợp đồng store.
 - `tests`, `scripts`, `deploy`, `docs`: test, seed, benchmark, cấu hình và kịch bản.
 
-Chi tiết luồng phụ thuộc của mobile nằm trong [tài liệu kiến trúc](docs/architecture.md#kiến-trúc-mã-mobile).
+Chi tiết luồng phụ thuộc của [DS01](docs/architecture.md#kiến-trúc-mã-ds01) và [mobile](docs/architecture.md#kiến-trúc-mã-mobile) nằm trong tài liệu kiến trúc.
 
 ## Giới hạn hiện tại
 

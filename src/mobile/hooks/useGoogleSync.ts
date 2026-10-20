@@ -32,5 +32,10 @@ export function useGoogleSync({ userId, loadCalendar }: Options) {
     setGoogleEmail("");
   };
 
-  return { googleEmail, connectGoogle: connect, syncGoogle: sync, disconnectGoogle: disconnect };
+  return {
+    googleEmail,
+    connectGoogle: connect,
+    syncGoogle: sync,
+    disconnectGoogle: disconnect,
+  };
 }

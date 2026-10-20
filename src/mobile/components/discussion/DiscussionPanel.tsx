@@ -362,10 +362,7 @@ export default function DiscussionPanel({
           {writable && (
             <View style={s.wrap}>
               {idOf(post.author) === userId && (
-                <Action
-                  title="Sửa bài"
-                  action={() => openPostEditor(post)}
-                />
+                <Action title="Sửa bài" action={() => openPostEditor(post)} />
               )}
               {(idOf(post.author) === userId ||
                 project.permissions.moderate) && (

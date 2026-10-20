@@ -199,24 +199,20 @@ describe("persistent project chat authorization", () => {
     const socket = io(url, { transports: ["websocket"] });
     sockets.push(socket);
     await new Promise<void>((resolve) => socket.once("connect", resolve));
-    await socket
-      .timeout(2000)
-      .emitWithAck("peer:register", {
-        peerId: "demo-a",
-        identityProof: randomUUID(),
-      });
+    await socket.timeout(2000).emitWithAck("peer:register", {
+      peerId: "demo-a",
+      identityProof: randomUUID(),
+    });
     expect(
       await socket
         .timeout(2000)
         .emitWithAck("project:group", { projectId: PROJECT }),
     ).toMatchObject({ ok: false });
     expect(
-      await socket
-        .timeout(2000)
-        .emitWithAck("group:authorize", {
-          groupId: randomUUID(),
-          otherPeerId: "demo-b",
-        }),
+      await socket.timeout(2000).emitWithAck("group:authorize", {
+        groupId: randomUUID(),
+        otherPeerId: "demo-b",
+      }),
     ).toMatchObject({ ok: false });
   });
 });

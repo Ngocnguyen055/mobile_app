@@ -38,9 +38,7 @@ function mockSearchUsers(rows: unknown[]) {
 function mockBlockRows(rows: unknown[]) {
   const lean = vi.fn().mockResolvedValue(rows);
   const select = vi.fn().mockReturnValue({ lean });
-  const find = vi
-    .spyOn(UserBlock, "find")
-    .mockReturnValue({ select } as never);
+  const find = vi.spyOn(UserBlock, "find").mockReturnValue({ select } as never);
   return { find, select, lean };
 }
 

@@ -86,7 +86,9 @@ function DirectInfoModal({
           >
             <Text style={styles.heading}>Ảnh đã gửi</Text>
             {!images.length && (
-              <Text style={styles.muted}>Chưa có ảnh trong cuộc trò chuyện.</Text>
+              <Text style={styles.muted}>
+                Chưa có ảnh trong cuộc trò chuyện.
+              </Text>
             )}
             {!!images.length && (
               <View style={styles.chatImageGrid}>
@@ -115,7 +117,9 @@ function DirectInfoModal({
             )}
             <Text style={styles.heading}>Tệp đã gửi</Text>
             {!files.length && (
-              <Text style={styles.muted}>Chưa có tệp trong cuộc trò chuyện.</Text>
+              <Text style={styles.muted}>
+                Chưa có tệp trong cuộc trò chuyện.
+              </Text>
             )}
             {files.map((attachment) => (
               <Pressable

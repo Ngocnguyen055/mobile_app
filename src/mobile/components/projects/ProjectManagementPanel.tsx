@@ -227,10 +227,7 @@ export default function ProjectManagementPanel({
                   accessibilityLabel="Thêm thành viên đã chọn"
                   disabled={addMemberDisabled}
                   onPress={submitMember}
-                  style={[
-                    s.compactAddButton,
-                    addMemberDisabled && s.disabled,
-                  ]}
+                  style={[s.compactAddButton, addMemberDisabled && s.disabled]}
                 >
                   <Text style={s.compactAddButtonText}>＋</Text>
                 </Pressable>
@@ -284,16 +281,13 @@ export default function ProjectManagementPanel({
               project.permissions.manageMembers &&
               member._id !== idOf(project.owner) &&
               member.role !== "DIRECTOR" &&
-              (member.role !== "MANAGER" ||
-                project.permissions.appointManager);
+              (member.role !== "MANAGER" || project.permissions.appointManager);
             return (
               <View key={member._id} style={s.memberCard}>
                 <View style={s.memberAvatar}>
                   <Text style={s.memberAvatarText}>
-                    {member.name
-                      .trim()
-                      .charAt(0)
-                      .toLocaleUpperCase("vi") || "?"}
+                    {member.name.trim().charAt(0).toLocaleUpperCase("vi") ||
+                      "?"}
                   </Text>
                 </View>
                 <View style={s.memberInfo}>

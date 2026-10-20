@@ -186,16 +186,8 @@ describe("signaling and relay integration", () => {
       authorizer,
     );
     const signalUrl = await start(signal);
-    const a = await register(
-      signalUrl,
-      aId,
-      jwt.sign({ sub: aId }, jwtSecret),
-    );
-    const b = await register(
-      signalUrl,
-      bId,
-      jwt.sign({ sub: bId }, jwtSecret),
-    );
+    const a = await register(signalUrl, aId, jwt.sign({ sub: aId }, jwtSecret));
+    const b = await register(signalUrl, bId, jwt.sign({ sub: bId }, jwtSecret));
     expect(
       await a.signal.timeout(3000).emitWithAck("peer:lookup", { peerId: bId }),
     ).toEqual({ ok: false, error: "direct chat blocked" });
