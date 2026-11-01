@@ -1,37 +1,74 @@
-# Kịch bản demo DS01 và Mobile
+# Kịch bản demo Mobile
 
 ## Chuẩn bị
 
-1. Ghi commit, thời gian, máy, OS, IP/mạng. Chạy MongoDB replica set/Atlas, API, signaling, relay, web trong terminal riêng để thấy log. Migration database cũ theo README trước khi chạy các service, seed ba tài khoản nếu cần. Với web peer dùng ba profile riêng, ID `peer-a`, `peer-b`, `peer-c`.
-2. Với Android, tạo development build và đăng nhập ba tài khoản mẫu hoặc tài khoản mới; Peer ID là `_id` của tài khoản. Cần ít nhất hai máy Android cho bằng chứng native. Kiểm tra ba endpoint `/health` và URL công khai qua điện thoại.
-3. Bật ghi màn hình/log thực tế; lưu vào `docs/evidence/` và điền kết quả trong `test-plan.md`.
+- MongoDB truy cập được, API chạy ở cổng 4000.
+- Development build đã cài trên ít nhất một emulator. Phần chat offline nên có hai emulator/điện thoại.
+- `.env` dùng đúng URL: emulator là `10.0.2.2`, điện thoại thật là IP LAN hoặc HTTPS public.
+- Đã chạy `npm.cmd run seed`.
+- Tài khoản An, Bình, Chi dùng mật khẩu `StudentDemo123!`.
+- Xóa/ghi chú rõ dữ liệu thử cũ để demo có kết quả dễ quan sát.
 
-## Thứ tự trình diễn
+Không cần signaling, relay, web peer hoặc server DS01 cho demo repository này.
 
-1. **Discovery:** đăng ký A, B, C; xem online list và log signaling `REGISTER`. Đóng C đột ngột, chờ offline/timeout rồi mở lại C. Ghi thời gian phát hiện.
-2. **DIRECT:** A chọn B, gửi Message ID được log peer `DIRECT SEND`; B hiển thị DIRECT và ACK, A hiển thị delivered. Tìm đúng ID ở log relay và xác nhận không có `FORWARD` cho ID đó. Nếu không mở DataChannel thì ghi thất bại; chưa được thay bằng ảnh relay.
-3. **RELAY khác mạng:** đưa C sang 4G hoặc Wi-Fi khác, kết nối ba URL công khai. A chọn C, gửi. Nếu DIRECT vẫn mở, bật `Mô phỏng DIRECT thất bại (ép RELAY)` trên web hoặc nút ép RELAY trên Android. Đối chiếu `RELAY SEND` và relay `FORWARD` cùng ID, C ACK.
-4. **Nhóm web demo:** A tạo nhóm A/B/C, gửi tin; kiểm tra trạng thái per recipient. A thêm/xóa thành viên bằng ô ID; B/C thấy version/member list cập nhật. Với nhóm Android dự án, tạo/thêm/xóa thành viên ở REST/UI Thành viên; nhóm Chat tự đồng bộ và không dùng ô ID. Gửi gần đồng thời B→nhóm và C→nhóm, ghi thứ tự nhận.
-5. **Chat 1:1 trên Mobile:** A mở `Tin nhắn`, chọn B từ danh bạ cùng dự án và gửi khi B online. Đối chiếu hai màn hình: đúng nội dung, trạng thái ACK và cùng nhãn DIRECT/RELAY. Gửi xen kẽ một tin ở tab Chat nhóm của dự án để chứng minh hai lịch sử không trộn. Force-stop rồi mở lại A để kiểm tra SQLite; đưa B offline và xác nhận composer bị khóa, không hứa giao lại tin cũ.
-6. **Lỗi:** tắt B đột ngột, A gửi và chờ `failed`; B bật lại, thấy lịch sử đã lưu cục bộ, A gửi tin mới. Trong lúc DIRECT A–C đang hoạt động, tắt kết nối peer hoặc thay mạng để DataChannel mất; kiểm tra chuyển nhãn RELAY. Tắt hẳn relay, lặp gửi khi DIRECT cũng mất: tin phải failed, không giả báo delivered. Bật relay lại, gửi tin mới.
-7. **Mobile:** tạo dự án độc lập, thêm hai thành viên qua `☰ → Thành viên`, giao task; chọn `Bắt đầu` và `Kết thúc (deadline)` bằng popup native, tải lại để chứng minh hai mốc đã lưu. Thử kết thúc trước bắt đầu và ghi nhận API từ chối. Sau đó đổi status, xem tiến độ, thao tác lịch ngày/tuần/tháng, kiểm tra nhắc theo `dueAt`, đăng bài kèm tệp và bình luận trong Thảo luận, xem ngân sách. Nếu có Google credential, kết nối và đồng bộ hai lần rồi so sánh số event thật.
-8. **Phân cấp:** A tạo tổng (Giám đốc), thêm B/C, tạo con với B là Trưởng phòng và thêm C. B tạo/giao task C; C chỉ đổi status task của mình. C đăng bài kèm ảnh, B bình luận và ẩn bài nhưng không sửa nội dung của C. Xem inbox: actor không nhận, người ngoài con không nhận bài. A thử xóa B mà chưa chọn người thay: bị từ chối; chọn C thay B rồi xóa, B mất quyền/nhóm nhưng lịch sử trước đó còn ở SQLite. A lưu trữ tổng, xác nhận task/bài/chat mới bị chặn; khôi phục tổng hai lần với hai lựa chọn con. Restart signaling rồi xác nhận nhóm dự án giữ UUID. Lưu ảnh/log thật; chưa có bằng chứng thiết bị cho bước này.
+## Phần 1 — đăng nhập và lịch cá nhân
 
-## Mô phỏng lỗi khả thi
+1. Đăng nhập Bình; xác nhận màn hình mở đầu là **Lịch của tôi**.
+2. Chuyển Ngày/Tuần/Tháng; chỉ ra thứ `T2...CN`, định dạng `dd/MM/yyyy` và nhãn Hôm nay chỉ xuất hiện đúng ngày hiện tại.
+3. Chọn một ngày khác, bấm **Thêm sự kiện**.
+4. Nhập Nội dung sự kiện, dùng date/time picker cho bắt đầu/kết thúc, chọn mốc nhắc rồi lưu.
+5. Mở lại để sửa, sau đó xóa; giải thích reminder cũ được cập nhật/hủy.
+6. Chuyển bộ lọc Tất cả/Cá nhân/Dự án và giải thích lịch dự án chỉ đọc từ màn hình lịch tổng.
 
-- Checkbox web hoặc nút Android `ép RELAY` bỏ qua thử DIRECT cho tin mới; đây là mô phỏng đường DIRECT thất bại, không chứng minh NAT thực.
-- Dừng terminal relay bằng Ctrl+C, kiểm tra tin báo failed; chạy lại `npm run dev:relay` để thử phục hồi.
-- Đóng tab/force-stop Android để mô phỏng peer tắt đột ngột; theo dõi presence timeout tối đa 30 giây.
-- Không xóa localStorage/SQLite trước bước restart, vì mục tiêu là chứng minh khôi phục lịch sử cục bộ.
+## Phần 2 — dự án và phân quyền
 
-## Phiếu bằng chứng
+1. An tạo một dự án phân cấp và trở thành Giám đốc.
+2. Trong Thành viên, thêm Bình và Chi bằng email; chỉ ra thứ tự Giám đốc → Trưởng phòng → Nhân viên.
+3. Tạo dự án con, tìm Bình trong dropdown và bổ nhiệm Trưởng phòng.
+4. Vào dự án con, thêm Chi từ danh sách thành viên dự án tổng.
+5. Bình tạo task có ngày giờ bắt đầu/kết thúc, phân công Chi.
+6. Chi đăng nhập: xem task và chỉ cập nhật task của mình; thử thao tác quản lý không được phép để chứng minh API từ chối.
+7. Mở Tiến độ, bung danh sách task từng người; chỉ ra chưa làm/đang làm/hoàn thành/quá hạn.
+8. An lưu trữ dự án; xác nhận chỉ đọc. Khôi phục và chọn chính sách dự án con.
 
-| Mục                                    | File do nhóm bổ sung                              | Kết quả thật                                |
-| -------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
-| DIRECT Android, không relay FORWARD    | `docs/evidence/direct-android.*`                  | Chưa có                                     |
-| RELAY hai mạng, có FORWARD             | `docs/evidence/relay-two-networks.*`              | Chưa có                                     |
-| Ba peer/nhóm/ACK                       | `docs/evidence/three-peers.*`                     | Chưa có                                     |
-| SQLite sau restart                     | `docs/evidence/sqlite-restore.*`                  | Chưa có                                     |
-| UI chat 1:1 Android khi peer offline   | `docs/evidence/mobile-direct-chat-2026-10-05.png` | Có; chưa chứng minh gửi/ACK                 |
-| Google Calendar trước/sau, không trùng | `docs/evidence/google-sync.*`                     | Chưa có                                     |
-| Benchmark đầu ra thực                  | `docs/evidence/benchmark.txt`                     | Có, localhost 100 tin; cần đo thêm hai mạng |
+## Phần 3 — thảo luận và thông báo
+
+1. Đăng bài trong dự án kèm ảnh/tệp nhỏ.
+2. User khác bình luận; tạo đủ bình luận để chứng minh vùng comment có thanh cuộn riêng.
+3. Tác giả sửa nội dung của mình; manager thử ẩn/xóa nội dung vi phạm nhưng không sửa nội dung người khác.
+4. Mở 🔔 Thông báo, đánh dấu đã đọc và mở dự án liên quan.
+
+## Phần 4 — chat 1:1 giao offline
+
+1. Trên thiết bị A, Bình mở **Tin nhắn**, tìm `an@example.test` và mở hội thoại.
+2. Giữ thiết bị B/An chưa mở app. Bình gửi text và một tệp nhỏ.
+3. Chỉ ra trạng thái `Đã lưu, chờ người nhận`; đây là lưu server, không phải online P2P.
+4. Mở app trên thiết bị B và đăng nhập An. Chờ đồng bộ; tin phải xuất hiện.
+5. An mở hội thoại; thiết bị A làm mới/đồng bộ và thấy trạng thái Đã giao/Đã xem.
+6. Nhấn nút thông tin để xem ảnh/tệp đã gửi.
+7. Chặn Bình từ An; thử gửi mới và ghi lại lỗi. Bỏ chặn để tiếp tục.
+8. Nhấn giữ hội thoại ở danh sách để thử Xóa hoặc Chặn; giải thích xóa chỉ áp dụng phía hiện tại.
+
+## Phần 5 — chat nhóm và thay đổi thành viên
+
+1. Mở tab Chat của dự án có An/Bình/Chi, gửi text và tệp.
+2. Tắt app của Chi, gửi thêm một tin, sau đó mở lại Chi để kiểm tra sync.
+3. Giám đốc loại Chi khỏi dự án.
+4. Gửi tin nhóm mới; Chi không được sync tin mới hoặc tải tệp mới, nhưng SQLite cũ trên máy vẫn giữ lịch sử trước đó.
+
+## Phần 6 — lỗi và phục hồi
+
+1. Dừng API trong khi app còn mở.
+2. Gửi một tin text 1:1. Bubble phải được giữ trong SQLite/outbox và giao diện báo đồng bộ tạm gián đoạn.
+3. Khởi động lại API; trong vài giây outbox tự retry.
+4. Khởi động lại Mobile; lịch sử SQLite và cursor phải được phục hồi, không tạo bubble trùng.
+
+## Bằng chứng cần nhóm tự thu
+
+- Ảnh hai thiết bị của chat offline trước/sau khi người nhận mở app.
+- Log API/Mongo cho cùng Message ID và trạng thái queued → delivered → read.
+- Ảnh block, xóa hội thoại, ảnh/tệp và chat nhóm sau thay membership.
+- Ảnh quyền của ba vai trò, task picker, tiến độ, archive và notification.
+- Kết quả `typecheck`, `lint`, `test`, Android export/build và thời gian phép đo hiệu năng.
+
+Chỉ đưa ảnh/log thật vào báo cáo. Android JavaScript export không chứng minh APK đã cài được; emulator đơn không chứng minh chat hai thiết bị.

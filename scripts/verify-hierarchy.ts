@@ -375,20 +375,6 @@ try {
       !changed.members?.some((m) => m._id === manager.user.id),
     "manager replacement and membership committed together",
   );
-  const persistentGroup = (await fetch(
-    `${base}/internal/chat-groups/${child.chatGroupId}`,
-    {
-      headers: {
-        "x-peer-secret":
-          process.env.PEER_SECRET || "local-development-only-secret",
-      },
-    },
-  ).then((r) => r.json())) as { members: string[] };
-  assert(
-    !persistentGroup.members.includes(manager.user.id),
-    "chat directory excludes removed manager",
-  );
-
   await ok(director, `/projects/${root._id}/archive`, "PATCH", {
     archived: true,
   });

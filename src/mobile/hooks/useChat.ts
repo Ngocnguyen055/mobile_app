@@ -1,27 +1,31 @@
 import { useRef, useState, type MutableRefObject } from "react";
 import { Alert } from "react-native";
-import { RTCPeerConnection } from "react-native-webrtc";
+import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import {
-  DirectChatService,
-  PeerClient,
-  isDirectMessageBetween,
   type ChatAttachment,
-  type PeerConfig,
-  type Group,
+  type ChatGroup,
+  type ChatMessage,
   type StoredMessage,
-} from "@ds01/shared";
+} from "../domain/chat.ts";
 
 import {
   chatAttachmentUrl,
+  ApiError,
+  deleteStoredDirectConversation,
   getToken,
   loadBlockedChatUsers,
   loadChatUser,
+  markStoredChatMessagesRead,
+  persistDirectChatMessage,
+  persistGroupChatMessage,
   searchChatUsers,
   setChatUserBlocked,
+  syncStoredChatMessages,
   uploadChatAttachments,
+  uploadGroupChatAttachments,
   type ChatContact,
   type Project,
   type User,
@@ -35,6 +39,24 @@ type UseChatOptions = {
   onError: (message: string) => void;
 };
 
+export function chatGroupForProject(project: Project): ChatGroup | null {
+  if (!project.chatGroupId) return null;
+  return {
+    id: project.chatGroupId,
+    ownerId: project.owner,
+    members: [
+      ...new Set(
+        project.members.map((member) =>
+          typeof member === "string" ? member : member._id,
+        ),
+      ),
+    ],
+    version: project.version,
+    projectId: project._id,
+    archived: project.archived,
+  };
+}
+
 export function useChat({ user, projectRef, onError }: UseChatOptions) {
   const setError = onError;
   const execute = async (fn: () => Promise<unknown>) => {
@@ -44,128 +66,185 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
-  const [online, setOnline] = useState<string[]>([]);
-  const [group, setGroup] = useState<Group | null>(null);
+  const [group, setGroup] = useState<ChatGroup | null>(null);
   const [messageBody, setMessageBody] = useState("");
   const [messages, setMessages] = useState<StoredMessage[]>([]);
-  const [modes, setModes] = useState<Record<string, string>>({});
   const [logs, setLogs] = useState<string[]>([]);
-  const [forceRelay, setForceRelay] = useState(false);
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatContactsLoading, setChatContactsLoading] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
   const [chatSearchResults, setChatSearchResults] = useState<ChatContact[]>([]);
   const [chatSearching, setChatSearching] = useState(false);
-  const [blockedPeerIds, setBlockedPeerIds] = useState<string[]>([]);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
   const [directContact, setDirectContact] = useState<ChatContact | null>(null);
   const [directMessages, setDirectMessages] = useState<StoredMessage[]>([]);
   const [directMessageBody, setDirectMessageBody] = useState("");
   const [directOpening, setDirectOpening] = useState(false);
   const [directSending, setDirectSending] = useState(false);
   const [directUploading, setDirectUploading] = useState(false);
+  const [groupUploading, setGroupUploading] = useState(false);
   const [directInfoVisible, setDirectInfoVisible] = useState(false);
   const directSendingRef = useRef(false);
-  const peer = useRef<PeerClient | null>(null);
-  const peerConnect = useRef<Promise<void> | null>(null);
   const store = useRef<MobileStore | null>(null);
-  const directChat = useRef<DirectChatService | null>(null);
   const directContactRef = useRef<ChatContact | null>(null);
   const directOpenRequest = useRef(0);
+  const chatSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatSyncing = useRef(false);
 
-  const initializePeer = async (me: User, isCancelled: () => boolean) => {
+  const createPersistentInput = (
+    body: string,
+    attachments: ChatAttachment[] = [],
+  ) => ({
+    messageId: Crypto.randomUUID(),
+    sessionId: Crypto.randomUUID(),
+    timestamp: Date.now(),
+    sequence: Date.now(),
+    body: body.trim(),
+    attachmentIds: attachments.map((attachment) => attachment.id),
+  });
+
+  const refreshChatViews = async () => {
+    const local = store.current;
+    if (!local) return;
+    const history = await local.list();
+    setMessages(history);
+    const selected = directContactRef.current;
+    if (selected) setDirectMessages(await local.listDirect(selected.id));
+  };
+
+  const flushChatOutbox = async () => {
+    const local = store.current;
+    if (!local) return;
+    for (const item of await local.listChatOutbox()) {
+      try {
+        if (item.targetKind === "direct") {
+          const row = await persistDirectChatMessage(
+            item.targetId,
+            item.payload,
+          );
+          await local.put(row);
+        } else {
+          const rows = await persistGroupChatMessage(
+            item.targetId,
+            item.payload,
+          );
+          await local.deleteGroupDeliveries(item.payload.messageId, item.targetId);
+          for (const row of rows) await local.put(row);
+        }
+        await local.removeChatOutbox(item.id);
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status < 500) {
+          const affected = (await local.list()).filter(
+            (row) => row.message.messageId === item.payload.messageId,
+          );
+          for (const row of affected)
+            await local.mark(
+              row.message.messageId,
+              row.message.receiverId,
+              "failed",
+            );
+          await local.removeChatOutbox(item.id);
+        }
+        throw caught;
+      }
+    }
+  };
+
+  const rememberContactsFromMessages = async (rows: StoredMessage[]) => {
+    const local = store.current;
+    const currentUserId = user?._id;
+    if (!local || !currentUserId) return;
+    const known = new Set(
+      (await local.listDirectContacts()).map((contact) => contact.userId),
+    );
+    const missing = new Set<string>();
+    for (const row of rows) {
+      const message = row.message;
+      if (message.groupId) continue;
+      const otherId: string =
+        message.senderId === currentUserId
+          ? message.receiverId
+          : message.senderId;
+      if (otherId !== currentUserId && !known.has(otherId))
+        missing.add(otherId);
+    }
+    for (const userId of missing) {
+      try {
+        const contact = await loadChatUser(userId);
+        await local.saveDirectContact({
+          userId: contact.id,
+          name: contact.name,
+          email: contact.email,
+          updatedAt: Date.now(),
+        });
+        setChatContacts((current) =>
+          current.some((item) => item.id === contact.id)
+            ? current
+            : [contact, ...current],
+        );
+      } catch {
+        /* The message remains available even if profile lookup is temporary. */
+      }
+    }
+  };
+
+  const syncPersistentChat = async () => {
+    const local = store.current;
+    if (!local || chatSyncing.current) return;
+    chatSyncing.current = true;
+    try {
+      await flushChatOutbox();
+      let cursor = await local.getChatSyncCursor();
+      const received: StoredMessage[] = [];
+      for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+        const page = await syncStoredChatMessages(cursor);
+        for (const row of page.items) {
+          await local.put(row);
+          received.push(row);
+        }
+        cursor = page.nextCursor;
+        await local.setChatSyncCursor(cursor);
+        if (!page.hasMore) break;
+      }
+      await rememberContactsFromMessages(received);
+      await refreshChatViews();
+    } finally {
+      chatSyncing.current = false;
+    }
+  };
+
+  const initializeChat = async (me: User, isCancelled: () => boolean) => {
     const id = me._id || me.id!;
     const local = new MobileStore(id);
     store.current = local;
-    const instance = new PeerClient({
-      peerId: id,
-      identityProof: getToken(),
-      signalUrl: process.env.EXPO_PUBLIC_SIGNAL_URL || "http://10.0.2.2:4001",
-      relayUrl: process.env.EXPO_PUBLIC_RELAY_URL || "http://10.0.2.2:4002",
-      rtc: RTCPeerConnection as unknown as PeerConfig["rtc"],
-      store: local,
-      onEvent: (event) => {
-        if (peer.current !== instance) return;
-        if (event.kind === "presence") setOnline(event.peers || []);
-        if (
-          event.kind === "group" &&
-          projectRef.current?.chatGroupId === event.group?.id
-        )
-          setGroup(event.group?.members.includes(id) ? event.group : null);
-        if (event.kind === "mode" && event.peerId)
-          setModes((current) => ({ ...current, [event.peerId!]: event.mode! }));
-        if (event.kind === "message") {
-          void local.list().then(setMessages);
-          if (event.message && !event.message.message.groupId) {
-            const message = event.message.message;
-            const otherId =
-              message.senderId === id ? message.receiverId : message.senderId;
-            void local.listDirectContacts().then(async (contacts) => {
-              if (contacts.some((contact) => contact.peerId === otherId))
-                return;
-              try {
-                const contact = await loadChatUser(otherId);
-                await local.saveDirectContact({
-                  peerId: contact.id,
-                  name: contact.name,
-                  email: contact.email,
-                  updatedAt: Date.now(),
-                });
-                if (peer.current === instance)
-                  setChatContacts((current) =>
-                    current.some((item) => item.id === contact.id)
-                      ? current
-                      : [contact, ...current],
-                  );
-              } catch {
-                /* Keep the message locally even while the profile API is unavailable. */
-              }
-            });
-          }
-          const selected = directContactRef.current;
-          if (
-            selected &&
-            event.message &&
-            isDirectMessageBetween(event.message.message, id, selected.id)
-          ) {
-            void local.listDirect(selected.id).then((rows) => {
-              if (directContactRef.current?.id === selected.id)
-                setDirectMessages(rows);
-            });
-          }
-        }
-        if (event.kind === "log") {
-          if (event.text === "signaling disconnected") setOnline([]);
-          setLogs((current) => [event.text || "", ...current].slice(0, 100));
-        }
-      },
-    });
-    peer.current = instance;
-    directChat.current = new DirectChatService(instance, local);
     const [history, cachedContacts, cachedBlocked] = await Promise.all([
       local.list(),
       local.listDirectContacts(),
       local.listDirectBlocked(),
     ]);
-    if (!isCancelled() && peer.current === instance) {
+    if (!isCancelled() && store.current === local) {
       setMessages(history);
       setChatContacts(
         cachedContacts.map((contact) => ({
-          id: contact.peerId,
+          id: contact.userId,
           name: contact.name,
           email: contact.email,
         })),
       );
-      setBlockedPeerIds(cachedBlocked);
+      setBlockedUserIds(cachedBlocked);
+      if (chatSyncTimer.current) clearInterval(chatSyncTimer.current);
+      void syncPersistentChat().catch((caught) =>
+        setLogs((current) => [
+          `Đồng bộ chat tạm gián đoạn: ${caught instanceof Error ? caught.message : String(caught)}`,
+          ...current,
+        ].slice(0, 100)),
+      );
+      chatSyncTimer.current = setInterval(() => {
+        void syncPersistentChat().catch(() => {
+          /* A queued message remains in SQLite until the API is reachable. */
+        });
+      }, 3_000);
     }
-  };
-
-  const connectPeer = async () => {
-    if (!peer.current) throw new Error("Peer chat chưa được khởi tạo.");
-    peerConnect.current ||= peer.current.connect().catch((caught) => {
-      peerConnect.current = null;
-      throw caught;
-    });
-    await peerConnect.current;
   };
 
   const closeDirectConversation = () => {
@@ -179,10 +258,10 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const rememberChatContact = async (contact: ChatContact) => {
-    const service = directChat.current;
-    if (!service) throw new Error("Chat cá nhân chưa được khởi tạo.");
-    await service.rememberContact({
-      peerId: contact.id,
+    const local = store.current;
+    if (!local) throw new Error("Chat cá nhân chưa được khởi tạo.");
+    await local.saveDirectContact({
+      userId: contact.id,
       name: contact.name,
       email: contact.email,
       updatedAt: Date.now(),
@@ -194,20 +273,19 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const loadDirectConversations = async () => {
-    const service = directChat.current;
     const local = store.current;
-    if (!service || !local) throw new Error("Chat cá nhân đang khởi tạo.");
+    if (!local) throw new Error("Chat cá nhân đang khởi tạo.");
     setChatContactsLoading(true);
     try {
       const [cachedContacts, history] = await Promise.all([
-        service.contacts(),
+        local.listDirectContacts(),
         local.list(),
       ]);
       setMessages(history);
       const contacts = new Map<string, ChatContact>(
         cachedContacts.map((contact) => [
-          contact.peerId,
-          { id: contact.peerId, name: contact.name, email: contact.email },
+          contact.userId,
+          { id: contact.userId, name: contact.name, email: contact.email },
         ]),
       );
       try {
@@ -215,64 +293,56 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
         const serverBlocked = new Set(
           blockedUsers.map((contact) => contact.id),
         );
-        const localBlocked = await service.blockedPeers();
+        const localBlocked = await local.listDirectBlocked();
         await Promise.all([
           ...blockedUsers.map(async (contact) => {
             contacts.set(contact.id, contact);
-            await service.rememberContact({
-              peerId: contact.id,
+            await local.saveDirectContact({
+              userId: contact.id,
               name: contact.name,
               email: contact.email,
               updatedAt: Date.now(),
             });
-            await service.setBlocked(contact.id, true);
+            await local.setDirectBlocked(contact.id, true);
           }),
           ...localBlocked
-            .filter((peerId) => !serverBlocked.has(peerId))
-            .map((peerId) => service.setBlocked(peerId, false)),
+            .filter((userId) => !serverBlocked.has(userId))
+            .map((userId) => local.setDirectBlocked(userId, false)),
         ]);
-        setBlockedPeerIds([...serverBlocked]);
+        setBlockedUserIds([...serverBlocked]);
       } catch (caught) {
         setError(
           `Không đồng bộ được danh sách chặn; ứng dụng đang dùng dữ liệu trên máy: ${caught instanceof Error ? caught.message : String(caught)}`,
         );
-        setBlockedPeerIds(await service.blockedPeers());
+        setBlockedUserIds(await local.listDirectBlocked());
       }
 
-      const missingPeerIds = new Set<string>();
+      const missingUserIds = new Set<string>();
       for (const row of history) {
         const message = row.message;
-        if (message.groupId || message.type === "ack") continue;
+        if (message.groupId) continue;
         const otherId =
           message.senderId === user!._id
             ? message.receiverId
             : message.senderId;
         if (otherId !== user!._id && !contacts.has(otherId))
-          missingPeerIds.add(otherId);
+          missingUserIds.add(otherId);
       }
       const resolved = await Promise.allSettled(
-        [...missingPeerIds].map((peerId) => loadChatUser(peerId)),
+        [...missingUserIds].map((userId) => loadChatUser(userId)),
       );
       for (const result of resolved) {
         if (result.status !== "fulfilled") continue;
         const contact = result.value;
         contacts.set(contact.id, contact);
-        await service.rememberContact({
-          peerId: contact.id,
+        await local.saveDirectContact({
+          userId: contact.id,
           name: contact.name,
           email: contact.email,
           updatedAt: Date.now(),
         });
       }
       setChatContacts([...contacts.values()]);
-      try {
-        await connectPeer();
-      } catch (caught) {
-        setOnline([]);
-        setError(
-          `Không kết nối được dịch vụ chat. Danh sách hội thoại và lịch sử trên máy vẫn dùng được: ${caught instanceof Error ? caught.message : String(caught)}`,
-        );
-      }
       return [...contacts.values()];
     } finally {
       setChatContactsLoading(false);
@@ -292,8 +362,8 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const openDirectConversation = async (contact: ChatContact) => {
-    const service = directChat.current;
-    if (!service) throw new Error("Chat cá nhân chưa được khởi tạo.");
+    const local = store.current;
+    if (!local) throw new Error("Chat cá nhân chưa được khởi tạo.");
     await rememberChatContact(contact);
     const request = ++directOpenRequest.current;
     if (directContactRef.current?.id !== contact.id) setDirectMessageBody("");
@@ -301,57 +371,84 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     setDirectContact(contact);
     setDirectOpening(true);
     try {
-      const history = await service.history(contact.id);
+      try {
+        await syncPersistentChat();
+      } catch {
+        /* Local history remains available while the API is unreachable. */
+      }
+      const history = await local.listDirect(contact.id);
       if (directOpenRequest.current !== request) return;
       setDirectMessages(history);
-      try {
-        await connectPeer();
-        const discovery = await peer.current!.lookupPeer(contact.id);
-        if (directOpenRequest.current !== request) return;
-        setOnline((current) =>
-          discovery.online
-            ? [...new Set([...current, contact.id])]
-            : current.filter((id) => id !== contact.id),
-        );
-      } catch (caught) {
-        if (directOpenRequest.current !== request) return;
-        setOnline((current) => current.filter((id) => id !== contact.id));
-        setError(
-          `Không lấy được trạng thái của ${contact.name}. Bạn vẫn có thể xem lịch sử trên máy: ${caught instanceof Error ? caught.message : String(caught)}`,
-        );
-      }
+      const unreadIds = history
+        .filter((row) => row.message.senderId === contact.id)
+        .map((row) => row.message.messageId);
+      if (unreadIds.length)
+        void markStoredChatMessagesRead(unreadIds).catch(() => {
+          /* Read receipts will be retried by a later conversation refresh. */
+        });
     } finally {
       if (directOpenRequest.current === request) setDirectOpening(false);
     }
   };
 
   const refreshDirectHistory = async (contactId: string) => {
-    const service = directChat.current;
-    if (!service) return;
-    const history = await service.history(contactId);
+    const local = store.current;
+    if (!local) return;
+    const history = await local.listDirect(contactId);
     if (directContactRef.current?.id === contactId) setDirectMessages(history);
+  };
+
+  const queueDirectMessage = async (
+    contact: ChatContact,
+    body: string,
+    attachments: ChatAttachment[] = [],
+  ) => {
+    const local = store.current;
+    if (!local || !user) throw new Error("Chat cá nhân đang khởi tạo.");
+    const input = createPersistentInput(body, attachments);
+    const message: ChatMessage = {
+      ...input,
+      senderId: user._id,
+      receiverId: contact.id,
+      groupId: null,
+      type: attachments.length ? "attachment" : "text",
+      attachments: attachments.length ? attachments : undefined,
+    };
+    await local.put({ message, status: "queued" });
+    await local.enqueueChatOutbox({
+      id: input.messageId,
+      targetKind: "direct",
+      targetId: contact.id,
+      payload: input,
+      createdAt: input.timestamp,
+    });
+    await refreshChatViews();
+    try {
+      await flushChatOutbox();
+    } catch (caught) {
+      if (caught instanceof ApiError) throw caught;
+      setLogs((current) => [
+        "Tin nhắn đã lưu trên thiết bị và sẽ tự gửi khi API hoạt động lại.",
+        ...current,
+      ].slice(0, 100));
+    }
+    await refreshChatViews();
   };
 
   const sendDirectMessage = async () => {
     const contact = directContactRef.current;
-    const service = directChat.current;
-    if (!contact || !service) throw new Error("Hãy chọn người nhận.");
-    if (blockedPeerIds.includes(contact.id))
+    if (!contact || !store.current) throw new Error("Hãy chọn người nhận.");
+    if (blockedUserIds.includes(contact.id))
       throw new Error("Bạn đã chặn người dùng này.");
     if (directSendingRef.current)
       throw new Error("Tin nhắn trước đang được gửi.");
     if (!canSendDirect(directMessageBody, contact.id, false))
       throw new Error("Tin nhắn phải có từ 1 đến 4000 ký tự.");
-    if (!online.includes(contact.id))
-      throw new Error(
-        `${contact.name} đang offline. Hệ thống chưa hỗ trợ giao tin offline.`,
-      );
     const body = directMessageBody.trim();
     directSendingRef.current = true;
     setDirectSending(true);
     try {
-      await connectPeer();
-      await service.send(contact.id, body);
+      await queueDirectMessage(contact, body);
       if (directContactRef.current?.id === contact.id) setDirectMessageBody("");
     } finally {
       try {
@@ -364,20 +461,20 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const changeDirectBlock = async (contact: ChatContact, blocked: boolean) => {
-    const service = directChat.current;
-    if (!service) throw new Error("Chat cá nhân chưa được khởi tạo.");
+    const local = store.current;
+    if (!local) throw new Error("Chat cá nhân chưa được khởi tạo.");
     await setChatUserBlocked(contact.id, blocked);
-    await service.setBlocked(contact.id, blocked);
-    setBlockedPeerIds((current) =>
+    await local.setDirectBlocked(contact.id, blocked);
+    setBlockedUserIds((current) =>
       blocked
         ? [...new Set([...current, contact.id])]
-        : current.filter((peerId) => peerId !== contact.id),
+        : current.filter((userId) => userId !== contact.id),
     );
     setDirectInfoVisible(false);
   };
 
   const confirmChangeDirectBlock = (contact: ChatContact) => {
-    const blocked = blockedPeerIds.includes(contact.id);
+    const blocked = blockedUserIds.includes(contact.id);
     Alert.alert(
       blocked ? "Bỏ chặn người dùng?" : "Chặn người dùng?",
       blocked
@@ -396,10 +493,16 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const deleteDirectConversation = async (contact: ChatContact) => {
-    const service = directChat.current;
     const local = store.current;
-    if (!service || !local) throw new Error("Chat cá nhân chưa được khởi tạo.");
-    await service.deleteConversation(contact.id);
+    if (!local) throw new Error("Chat cá nhân chưa được khởi tạo.");
+    await deleteStoredDirectConversation(contact.id);
+    for (const item of await local.listChatOutbox())
+      if (item.targetKind === "direct" && item.targetId === contact.id)
+        await local.removeChatOutbox(item.id);
+    await Promise.all([
+      local.deleteDirect(contact.id),
+      local.removeDirectContact(contact.id),
+    ]);
     const history = await local.list();
     setMessages(history);
     setChatContacts((current) =>
@@ -411,7 +514,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   const confirmDeleteDirectConversation = (contact: ChatContact) =>
     Alert.alert(
       "Xóa đoạn chat?",
-      "Tin nhắn chỉ bị xóa khỏi thiết bị này. Thao tác không xóa lịch sử trên thiết bị của người kia.",
+      "Tin nhắn sẽ bị ẩn khỏi tài khoản và xóa khỏi thiết bị này. Thao tác không xóa lịch sử của người kia.",
       [
         { text: "Hủy" },
         {
@@ -423,7 +526,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     );
 
   const showDirectConversationActions = (contact: ChatContact) => {
-    const blocked = blockedPeerIds.includes(contact.id);
+    const blocked = blockedUserIds.includes(contact.id);
     Alert.alert(contact.name, contact.email, [
       {
         text: "Xóa đoạn chat",
@@ -440,14 +543,9 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
 
   const pickAndSendDirectAttachments = async () => {
     const contact = directContactRef.current;
-    const service = directChat.current;
-    if (!contact || !service) throw new Error("Hãy chọn người nhận.");
-    if (blockedPeerIds.includes(contact.id))
+    if (!contact || !store.current) throw new Error("Hãy chọn người nhận.");
+    if (blockedUserIds.includes(contact.id))
       throw new Error("Bạn đã chặn người dùng này.");
-    if (!online.includes(contact.id))
-      throw new Error(
-        `${contact.name} đang offline. Hệ thống chưa hỗ trợ giao tệp offline.`,
-      );
     if (directUploading) return;
     const result = await DocumentPicker.getDocumentAsync({
       multiple: true,
@@ -461,12 +559,11 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       throw new Error("Mỗi ảnh hoặc tệp tối đa 512 KiB.");
     setDirectUploading(true);
     try {
-      await connectPeer();
       const attachments = await uploadChatAttachments(
         contact.id,
         result.assets,
       );
-      await service.sendAttachment(contact.id, attachments);
+      await queueDirectMessage(contact, "", attachments);
       await refreshDirectHistory(contact.id);
     } finally {
       setDirectUploading(false);
@@ -490,78 +587,143 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
 
   const ensureGroup = async () => {
     const currentProject = projectRef.current;
-    if (!currentProject || !peer.current) return;
-    await connectPeer();
-    const currentGroup = await peer.current.syncProjectGroup(
-      currentProject._id,
-    );
+    if (!currentProject) return null;
+    const currentGroup = chatGroupForProject(currentProject);
+    if (!currentGroup) return null;
     if (projectRef.current?._id === currentProject._id) setGroup(currentGroup);
+    try {
+      await syncPersistentChat();
+      const local = store.current;
+      if (local) {
+        const unread = (await local.list())
+          .filter(
+            (row) =>
+              row.message.groupId === currentGroup.id &&
+              row.message.senderId !== user?._id,
+          )
+          .map((row) => row.message.messageId);
+        if (unread.length) void markStoredChatMessagesRead(unread);
+      }
+    } catch {
+      /* Project chat can still display the SQLite cache. */
+    }
+    return currentGroup;
   };
 
-  const sendChat = async () => {
-    if (!group || !peer.current || !store.current)
+  const queueGroupMessage = async (
+    body: string,
+    attachments: ChatAttachment[] = [],
+  ) => {
+    if (!group || !store.current)
       throw new Error("Nhóm chưa sẵn sàng");
     const currentProject = projectRef.current;
     if (!currentProject || currentProject.archived)
       throw new Error("Dự án đã lưu trữ chỉ được xem.");
-    await ensureGroup();
-    const results = await peer.current.sendGroup(group.id, messageBody);
-    const failed = Object.entries(results).filter(
-      ([, value]) => value === "rejected",
-    );
-    if (failed.length)
-      throw new Error(
-        `Không gửi được cho ${failed.map(([id]) => id).join(", ")}`,
-      );
+    const currentGroup = await ensureGroup();
+    if (!currentGroup) throw new Error("Nhóm chưa sẵn sàng");
+    const input = createPersistentInput(body, attachments);
+    const recipients = currentGroup.members.filter((id) => id !== user?._id);
+    if (!recipients.length) throw new Error("Nhóm chưa có người nhận khác.");
+    for (const receiverId of recipients) {
+      const message: ChatMessage = {
+        ...input,
+        senderId: user!._id,
+        receiverId,
+        groupId: currentGroup.id,
+        type: attachments.length ? "attachment" : "text",
+        attachments: attachments.length ? attachments : undefined,
+      };
+      await store.current.put({ message, status: "queued" });
+    }
+    await store.current.enqueueChatOutbox({
+      id: input.messageId,
+      targetKind: "group",
+      targetId: currentGroup.id,
+      payload: input,
+      createdAt: input.timestamp,
+    });
+    await refreshChatViews();
+    try {
+      await flushChatOutbox();
+    } catch (caught) {
+      if (caught instanceof ApiError) throw caught;
+      setLogs((current) => [
+        "Tin nhóm đã lưu trên thiết bị và sẽ tự gửi khi API hoạt động lại.",
+        ...current,
+      ].slice(0, 100));
+    }
+    await refreshChatViews();
+  };
+
+  const sendChat = async () => {
+    if (!messageBody.trim()) throw new Error("Hãy nhập tin nhắn.");
+    await queueGroupMessage(messageBody);
     setMessageBody("");
-    setMessages(await store.current.list());
+  };
+
+  const pickAndSendGroupAttachments = async () => {
+    if (!group) throw new Error("Nhóm chưa sẵn sàng.");
+    if (groupUploading) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: "*/*",
+    });
+    if (result.canceled) return;
+    if (result.assets.length > 3)
+      throw new Error("Mỗi lần gửi tối đa 3 ảnh hoặc tệp.");
+    if (result.assets.some((file) => (file.size || 0) > 512 * 1024))
+      throw new Error("Mỗi ảnh hoặc tệp tối đa 512 KiB.");
+    setGroupUploading(true);
+    try {
+      const attachments = await uploadGroupChatAttachments(
+        group.id,
+        result.assets,
+      );
+      await queueGroupMessage(messageBody, attachments);
+      setMessageBody("");
+    } finally {
+      setGroupUploading(false);
+    }
   };
 
   const disposeChat = () => {
     directOpenRequest.current += 1;
-    const currentPeer = peer.current;
-    peer.current = null;
-    currentPeer?.close();
-    peerConnect.current = null;
+    if (chatSyncTimer.current) clearInterval(chatSyncTimer.current);
+    chatSyncTimer.current = null;
+    chatSyncing.current = false;
     store.current = null;
-    directChat.current = null;
     directContactRef.current = null;
   };
 
   const resetChatState = () => {
     disposeChat();
     setMessages([]);
-    setOnline([]);
     setGroup(null);
-    setModes({});
     setLogs([]);
-    setForceRelay(false);
     setChatContacts([]);
     setChatSearch("");
     setChatSearchResults([]);
     setChatSearching(false);
-    setBlockedPeerIds([]);
+    setBlockedUserIds([]);
     setDirectContact(null);
     setDirectMessages([]);
     setDirectMessageBody("");
     directSendingRef.current = false;
     setDirectSending(false);
     setDirectUploading(false);
+    setGroupUploading(false);
     setDirectInfoVisible(false);
   };
 
   return {
-    online,
     group,
     setGroup,
     messageBody,
     setMessageBody,
     messages,
     setMessages,
-    modes,
     logs,
-    forceRelay,
-    setForceRelay,
     chatContacts,
     chatContactsLoading,
     chatSearch,
@@ -569,7 +731,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     chatSearchResults,
     setChatSearchResults,
     chatSearching,
-    blockedPeerIds,
+    blockedUserIds,
     directContact,
     directMessages,
     directMessageBody,
@@ -577,10 +739,10 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     directOpening,
     directSending,
     directUploading,
+    groupUploading,
     directInfoVisible,
     setDirectInfoVisible,
-    peer,
-    initializePeer,
+    initializeChat,
     disposeChat,
     resetChatState,
     closeDirectConversation,
@@ -592,6 +754,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     confirmDeleteDirectConversation,
     showDirectConversationActions,
     pickAndSendDirectAttachments,
+    pickAndSendGroupAttachments,
     downloadChatAttachment,
     ensureGroup,
     sendChat,

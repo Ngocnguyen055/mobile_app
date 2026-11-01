@@ -3,16 +3,16 @@ import {
   isDirectMessageBetween,
   type MessageStatus,
   type StoredMessage,
-} from "@ds01/shared";
+} from "./chat.ts";
 
 export function directMessagesForContact(
   rows: StoredMessage[],
-  currentPeerId: string,
-  contactPeerId: string,
+  currentUserId: string,
+  contactUserId: string,
 ) {
   return rows
     .filter((row) =>
-      isDirectMessageBetween(row.message, currentPeerId, contactPeerId),
+      isDirectMessageBetween(row.message, currentUserId, contactUserId),
     )
     .sort(
       (left, right) =>
@@ -25,8 +25,10 @@ export function directMessagesForContact(
 
 const outgoingStatusLabels: Record<MessageStatus, string> = {
   pending: "Đang gửi",
+  queued: "Đã lưu, chờ người nhận",
   sent: "Đã gửi",
-  delivered: "Đã nhận ACK",
+  delivered: "Đã giao",
+  read: "Đã xem",
   failed: "Gửi thất bại",
   received: "Đã nhận",
 };
@@ -40,9 +42,9 @@ export function directMessageStatusLabel(
 
 export function canSendDirect(
   body: string,
-  contactPeerId: string | undefined,
+  contactUserId: string | undefined,
   sending: boolean,
 ) {
   const length = body.trim().length;
-  return !!contactPeerId && !sending && length > 0 && length <= 4000;
+  return !!contactUserId && !sending && length > 0 && length <= 4000;
 }

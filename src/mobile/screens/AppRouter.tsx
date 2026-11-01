@@ -36,7 +36,6 @@ type Props = {
   tab: ProjectTab;
   drawerVisible: boolean;
   error: string;
-  googleEmail: string;
   contentScroll: React.RefObject<ScrollView | null>;
   projectsController: ReturnType<typeof useProjects>;
   workspaceController: ReturnType<typeof useProjectWorkspace>;
@@ -54,8 +53,6 @@ type Props = {
   onProjectChanged: () => Promise<void>;
   onOpenCalendarEvent: (event: CalendarEvent) => Promise<void>;
   onOpenNotification: (notification: InboxNotification) => Promise<void>;
-  onConnectGoogle: () => Promise<void>;
-  onSyncGoogle: () => Promise<void>;
   onLogout: () => Promise<void>;
 };
 
@@ -65,7 +62,6 @@ export default function AppRouter({
   tab,
   drawerVisible,
   error,
-  googleEmail,
   contentScroll,
   projectsController,
   workspaceController,
@@ -83,8 +79,6 @@ export default function AppRouter({
   onProjectChanged,
   onOpenCalendarEvent,
   onOpenNotification,
-  onConnectGoogle,
-  onSyncGoogle,
   onLogout,
 }: Props) {
   const projectListScreen = (
@@ -152,13 +146,9 @@ export default function AppRouter({
       {mainView === "messages" && (
         <ChatToolbar
           contact={chatController.directContact}
-          online={
-            !!chatController.directContact &&
-            chatController.online.includes(chatController.directContact.id)
-          }
           blocked={
             !!chatController.directContact &&
-            chatController.blockedPeerIds.includes(
+            chatController.blockedUserIds.includes(
               chatController.directContact.id,
             )
           }
@@ -172,7 +162,7 @@ export default function AppRouter({
           currentUserId={user._id}
           messages={chatController.directMessages}
           visible={chatController.directInfoVisible}
-          blocked={chatController.blockedPeerIds.includes(
+          blocked={chatController.blockedUserIds.includes(
             chatController.directContact.id,
           )}
           onClose={() => chatController.setDirectInfoVisible(false)}
@@ -262,14 +252,11 @@ export default function AppRouter({
             search={chatController.chatSearch}
             searchResults={chatController.chatSearchResults}
             searching={chatController.chatSearching}
-            blockedPeerIds={chatController.blockedPeerIds}
-            onlineUserIds={chatController.online}
+            blockedUserIds={chatController.blockedUserIds}
             selectedContact={chatController.directContact}
             messages={chatController.messages}
             selectedMessages={chatController.directMessages}
             opening={chatController.directOpening}
-            modes={chatController.modes}
-            forceRelay={chatController.forceRelay}
             onSearchChange={(value) => {
               chatController.setChatSearch(value);
               if (!value.trim()) chatController.setChatSearchResults([]);
@@ -285,24 +272,15 @@ export default function AppRouter({
             onDownloadAttachment={(attachment) =>
               runAction(() => chatController.downloadChatAttachment(attachment))
             }
-            onToggleForceRelay={() => {
-              const forceRelay = !chatController.forceRelay;
-              chatController.setForceRelay(forceRelay);
-              if (chatController.peer.current)
-                chatController.peer.current.forceRelay = forceRelay;
-            }}
           />
         )}
         {mainView === "account" && (
           <AccountScreen
             user={user}
             reminderOffset={reminderController.offsets[0] ?? 0}
-            googleEmail={googleEmail}
             onReminderChange={(value) =>
               runAction(() => reminderController.setReminderPreference(value))
             }
-            onConnectGoogle={() => runAction(onConnectGoogle)}
-            onSyncGoogle={() => runAction(onSyncGoogle)}
             onLogout={() => runAction(onLogout)}
           />
         )}
@@ -314,10 +292,7 @@ export default function AppRouter({
         <DirectComposer
           contact={chatController.directContact}
           body={chatController.directMessageBody}
-          online={chatController.online.includes(
-            chatController.directContact.id,
-          )}
-          blocked={chatController.blockedPeerIds.includes(
+          blocked={chatController.blockedUserIds.includes(
             chatController.directContact.id,
           )}
           sending={chatController.directSending}

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ChatMessage, StoredMessage } from "../src/shared/index.ts";
+import type {
+  ChatMessage,
+  StoredMessage,
+} from "../src/mobile/domain/chat.ts";
 import {
   canSendDirect,
   directMessageStatusLabel,
@@ -41,10 +44,6 @@ function stored(
               },
             ]
           : undefined,
-      mode: "RELAY",
-      ackFor:
-        type === "ack" ? "00000000-0000-4000-8000-000000000099" : undefined,
-      attempt: 1,
       sequence: 1,
     },
     status: senderId === CURRENT ? "delivered" : "received",
@@ -52,7 +51,7 @@ function stored(
 }
 
 describe("mobile direct-chat policy", () => {
-  it("keeps direct text and attachments while excluding ACK/group/other contacts", () => {
+  it("keeps direct text and attachments while excluding group/other contacts", () => {
     const later = stored(
       "00000000-0000-4000-8000-000000000002",
       CURRENT,
@@ -72,14 +71,6 @@ describe("mobile direct-chat policy", () => {
       CONTACT,
       5,
       GROUP,
-    );
-    const acknowledgement = stored(
-      "00000000-0000-4000-8000-000000000004",
-      CONTACT,
-      CURRENT,
-      6,
-      null,
-      "ack",
     );
     const anotherContact = stored(
       "00000000-0000-4000-8000-000000000005",
@@ -102,7 +93,6 @@ describe("mobile direct-chat policy", () => {
           later,
           group,
           anotherContact,
-          acknowledgement,
           attachment,
           earlierInbound,
         ],
@@ -118,7 +108,11 @@ describe("mobile direct-chat policy", () => {
 
   it("maps delivery states and validates the composer", () => {
     expect(directMessageStatusLabel("pending", true)).toBe("Đang gửi");
-    expect(directMessageStatusLabel("delivered", true)).toBe("Đã nhận ACK");
+    expect(directMessageStatusLabel("queued", true)).toBe(
+      "Đã lưu, chờ người nhận",
+    );
+    expect(directMessageStatusLabel("delivered", true)).toBe("Đã giao");
+    expect(directMessageStatusLabel("read", true)).toBe("Đã xem");
     expect(directMessageStatusLabel("failed", true)).toBe("Gửi thất bại");
     expect(directMessageStatusLabel("received", false)).toBe("Đã nhận");
     expect(canSendDirect(" Xin chào ", CONTACT, false)).toBe(true);

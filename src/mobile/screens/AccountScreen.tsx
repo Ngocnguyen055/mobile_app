@@ -10,20 +10,14 @@ import { styles } from "../styles/app.ts";
 type AccountScreenProps = {
   user: User;
   reminderOffset: ReminderOffset;
-  googleEmail: string;
   onReminderChange: (value: ReminderOffset) => void;
-  onConnectGoogle: () => void;
-  onSyncGoogle: () => void;
   onLogout: () => void;
 };
 
 function AccountScreen({
   user,
   reminderOffset,
-  googleEmail,
   onReminderChange,
-  onConnectGoogle,
-  onSyncGoogle,
   onLogout,
 }: AccountScreenProps) {
   return (
@@ -54,31 +48,6 @@ function AccountScreen({
           zeroLabel="Đúng thời điểm bắt đầu / đến hạn"
           value={reminderOffset}
           onChange={onReminderChange}
-        />
-      </View>
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionEyebrow}>TÍCH HỢP</Text>
-        <Text style={styles.heading}>Google Calendar</Text>
-        <Text style={styles.subtitle}>
-          Đưa deadline và sự kiện vào lịch chính, không tạo mục trùng.
-        </Text>
-        <View style={styles.connectionRow}>
-          <View
-            style={[
-              styles.connectionDot,
-              googleEmail && styles.connectionDotActive,
-            ]}
-          />
-          <Text style={styles.connectionText}>
-            {googleEmail || "Chưa kết nối Google"}
-          </Text>
-        </View>
-        <Button label="Kết nối Google" onPress={onConnectGoogle} />
-        <Button
-          label="Đồng bộ ngay"
-          onPress={onSyncGoogle}
-          disabled={!googleEmail}
-          secondary
         />
       </View>
       <View style={styles.sectionCard}>

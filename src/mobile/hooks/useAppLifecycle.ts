@@ -31,7 +31,7 @@ export function useAppLifecycle({
     let active = true;
     runAction(projectCoordinator.loadHome);
     void chatController
-      .initializePeer(user, () => !active)
+      .initializeChat(user, () => !active)
       .catch((caught) => {
         if (active) onError(`Lịch sử chat: ${String(caught)}`);
       });

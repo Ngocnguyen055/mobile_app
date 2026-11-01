@@ -6,7 +6,7 @@ import {
 } from "../services/api.ts";
 import { calendarProjectId } from "../domain/calendarPolicy.ts";
 import type { useCalendarEvents } from "./useCalendarEvents.ts";
-import type { useChat } from "./useChat.ts";
+import { chatGroupForProject, type useChat } from "./useChat.ts";
 import type { useProjectWorkspace } from "./useProjectWorkspace.ts";
 import type { useProjects } from "./useProjects.ts";
 import type { useTasks } from "./useTasks.ts";
@@ -43,11 +43,7 @@ export function useProjectCoordinator({
   const loadProject = async (projectId: string, open = true) => {
     const loaded = await workspaceController.loadProjectWorkspace(projectId);
     tasksController.setTasks(loaded.tasks);
-    chatController.setGroup(
-      chatController.peer.current
-        ?.getGroups()
-        .find((group) => group.id === loaded.project.chatGroupId) || null,
-    );
+    chatController.setGroup(chatGroupForProject(loaded.project));
     if (open) {
       tasksController.resetTaskWorkspace();
       onOpenProjectView();
@@ -62,7 +58,7 @@ export function useProjectCoordinator({
       projectsController.loadProjects(),
       calendarController.loadCalendar(),
     ]);
-    if (chatController.peer.current) await chatController.ensureGroup();
+    await chatController.ensureGroup();
   };
 
   const openEventFromCalendar = async (event: CalendarEvent) => {

@@ -1,22 +1,35 @@
-Các tệp trong thư mục này chỉ ghi bằng chứng thực sự đã thu được:
+# Bằng chứng kiểm thử
 
-- `test-run.txt`: kết quả test tự động và kiểm thử Calendar API trên Atlas.
-- `direct-chat-2026-10-05.txt`: kết quả thật của test/typecheck/lint/build cho chat 1:1, lần đọc `GET /contacts` trên MongoDB đang cấu hình và kiểm tra UI bằng ADB.
-- `mobile-direct-chat-2026-10-05.png`: màn hình hội thoại riêng trên Pixel 7 emulator với An đang offline; ảnh xác nhận UI và chính sách khóa gửi offline, không chứng minh gửi/ACK/DIRECT/RELAY với peer thứ hai.
-- `benchmark.txt`: phép đo relay localhost đã chạy.
-- `mobile-login-2026-09-27.png`: development build mới mở trên Android emulator tới màn hình đăng nhập. Ảnh này không chứng minh màn hình lịch sau đăng nhập hoặc notification.
-- `calendar-event-create-modal-2026-09-28.png`: modal tạo sự kiện gần toàn màn hình trên Android emulator.
-- `calendar-event-picker-2026-09-28.png`: native date spinner mở phía trên modal tạo sự kiện.
-- `calendar-event-time-picker-2026-09-28.png`: native time spinner 24 giờ sau bước chọn ngày.
-- `calendar-event-edit-modal-2026-09-28.png`: modal sửa sự kiện với footer `Hủy` / `Lưu thay đổi`.
-- `task-range-fields-2026-09-28.png`: form tạo task trên Android có hai trường `Bắt đầu` và `Kết thúc (deadline)`.
-- `task-start-picker-2026-09-28.png` và `task-start-time-picker-2026-09-28.png`: popup ngày và popup giờ 24 giờ của trường bắt đầu.
-- `task-end-picker-2026-09-28.png` và `task-end-time-picker-2026-09-28.png`: popup ngày và popup giờ 24 giờ của trường kết thúc.
-- `task-range-saved-2026-09-28.png`: task kiểm thử tạm xuất hiện lại trong danh sách với cả hai mốc sau khi API tải lại dự án. Bản ghi tạm đã được xóa ngay sau khi chụp và UI Automator xác nhận không còn trong danh sách.
-- `calendar-scope-sticky-2026-09-28.png`: sau khi cuộn lịch chính, khối `Lịch của tôi / Hiển thị` vẫn cố định và chỉ có ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`; ảnh cũng cho thấy `Tất cả` có `+ Thêm sự kiện` và mục dự án dùng `Xem / sửa`.
-- `calendar-project-scope-2026-09-28.png`: phạm vi `Dự án` đang được chọn; lịch chỉ hiển thị mục thuộc dự án và không có nút thêm sự kiện hoặc task trong phần ngày đã chọn.
-- `project-toolbar-sticky-2026-09-28.png`: danh sách task đã được cuộn nhưng thanh `← Danh sách`, tên dự án và hàng tab dự án vẫn cố định phía trên.
-- `project-calendar-readonly-2026-09-28.png`: tab `Lịch` bên trong dự án hiển thị lịch và mục đã có, nhưng không cung cấp nút tạo sự kiện hoặc task.
-- `project-event-navigation-2026-09-28.png`: sau khi chọn `Xem / sửa` trên sự kiện dự án ở lịch chính, app mở editor của đúng sự kiện và hiển thị `Thuộc lịch: Test` trong ngữ cảnh dự án.
+Thư mục này chỉ giữ bằng chứng của ứng dụng Mobile hiện tại. Log cũ thuộc repository DS01/signaling/relay đã được loại bỏ để không dùng nhầm trong báo cáo.
 
-Nhóm vẫn cần bổ sung ảnh/log DIRECT, RELAY hai mạng, notification thực tế và Google OAuth sau khi tự chạy các kịch bản tương ứng.
+## Ảnh đã có
+
+- `mobile-cleanup-2026-11-01.txt`: typecheck, lint, 82 test, Android JavaScript export, Gradle debug APK và audit dependency sau khi tách Mobile-only; chưa chứng minh cài/chạy emulator hoặc Atlas.
+
+- `mobile-login-2026-09-27.png`: development build mở trên Android emulator tới màn hình đăng nhập.
+- `calendar-event-create-modal-2026-09-28.png`: modal tạo sự kiện gần toàn màn hình.
+- `calendar-event-picker-2026-09-28.png`: popup chọn ngày native.
+- `calendar-event-time-picker-2026-09-28.png`: popup chọn giờ 24 giờ.
+- `calendar-event-edit-modal-2026-09-28.png`: modal sửa sự kiện.
+- `task-range-fields-2026-09-28.png`: task có Bắt đầu và Kết thúc.
+- `task-start-picker-2026-09-28.png`, `task-start-time-picker-2026-09-28.png`: picker bắt đầu.
+- `task-end-picker-2026-09-28.png`, `task-end-time-picker-2026-09-28.png`: picker kết thúc.
+- `task-range-saved-2026-09-28.png`: task đã lưu hiển thị lại hai mốc thời gian.
+- `calendar-scope-sticky-2026-09-28.png`: toolbar lịch cố định và ba phạm vi.
+- `calendar-project-scope-2026-09-28.png`: phạm vi Dự án không có nút tạo.
+- `project-toolbar-sticky-2026-09-28.png`: toolbar dự án cố định khi cuộn.
+- `project-calendar-readonly-2026-09-28.png`: lịch trong dự án chỉ đọc/tương tác với mục có sẵn.
+- `project-event-navigation-2026-09-28.png`: mở đúng editor sự kiện dự án.
+- `mobile-direct-chat-2026-10-05.png`: giao diện hội thoại 1:1 cũ trên emulator; chỉ dùng làm bằng chứng UI lịch sử, không chứng minh store-and-forward hiện tại.
+
+## Quy tắc bổ sung bằng chứng
+
+- Tên file có ngày chạy thật.
+- File text ghi command, exit code, môi trường và giới hạn của kết quả.
+- Ảnh không được dùng để suy ra chức năng ở ngoài khung hình.
+- Export JavaScript không được ghi thành build/cài APK thành công.
+- Test mock không được ghi thành Atlas/transaction thật.
+- Chat offline cần ảnh/log của hai tài khoản trên hai thiết bị/emulator.
+- Google Calendar chỉ là hướng phát triển; không cần và không được tạo bằng chứng giả cho tính năng chưa có.
+
+Các bằng chứng còn thiếu được liệt kê trong [test-plan.md](../test-plan.md) và [demo-script.md](../demo-script.md).

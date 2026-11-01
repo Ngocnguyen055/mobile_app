@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AddressInfo } from "node:net";
 import jwt from "jsonwebtoken";
 import { createApi } from "../src/api/index.ts";
-import { ChatAttachment, User, UserBlock } from "../src/api/models.ts";
+import { ChatAttachment, Project, User, UserBlock } from "../src/api/models.ts";
 import {
   canDirectChat,
   canReadChatAttachment,
@@ -23,6 +23,7 @@ const outsiderToken = jwt.sign(
   { sub: binh },
   process.env.JWT_SECRET || "local-development-only-secret",
 );
+const groupId = "10000000-0000-4000-8000-000000000001";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -186,6 +187,51 @@ describe("direct chat attachment access", () => {
         { headers: { Authorization: `Bearer ${outsiderToken}` } },
       );
       expect(denied.status).toBe(404);
+    });
+  });
+
+  it("uploads group attachments only for a current project member", async () => {
+    vi.spyOn(Project, "findOne").mockResolvedValue({
+      _id: "000000000000000000000010",
+      parentProject: null,
+      owner: me,
+      members: [me, an],
+      manager: me,
+      chatGroupId: groupId,
+      chatRevision: 1,
+      archived: false,
+    } as never);
+    const create = vi.spyOn(ChatAttachment, "create").mockResolvedValue([
+      {
+        _id: "507f1f77bcf86cd799439012",
+        name: "group.png",
+        mime: "image/png",
+        size: 3,
+      },
+    ] as never);
+
+    await withApi(async (baseUrl) => {
+      const form = new FormData();
+      form.append("groupId", groupId);
+      form.append(
+        "files",
+        new Blob(["png"], { type: "image/png" }),
+        "group.png",
+      );
+      const response = await fetch(`${baseUrl}/chat/attachments`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      expect(response.status).toBe(201);
+      expect(create).toHaveBeenCalledWith([
+        expect.objectContaining({
+          sender: me,
+          receiver: null,
+          groupId,
+          project: "000000000000000000000010",
+        }),
+      ]);
     });
   });
 });

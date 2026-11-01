@@ -166,7 +166,9 @@ userBlockSchema.pre("validate", function () {
 const chatAttachmentSchema = new Schema(
   {
     sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    receiver: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    receiver: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    groupId: { type: String, default: null },
+    project: { type: Schema.Types.ObjectId, ref: "Project", default: null },
     name: { type: String, required: true, maxlength: 160 },
     mime: { type: String, required: true, maxlength: 120 },
     size: { type: Number, required: true, min: 1, max: 512 * 1024 },
@@ -174,8 +176,48 @@ const chatAttachmentSchema = new Schema(
   },
   { timestamps: true, collection: "chat_attachments" },
 );
+chatAttachmentSchema.pre("validate", function () {
+  if (!!this.receiver === !!this.groupId)
+    this.invalidate(
+      "receiver",
+      "chat attachment requires exactly one receiver or group",
+    );
+});
 chatAttachmentSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
 chatAttachmentSchema.index({ receiver: 1, sender: 1, createdAt: -1 });
+chatAttachmentSchema.index({ groupId: 1, createdAt: -1 });
+const chatMessageSchema = new Schema(
+  {
+    messageId: { type: String, required: true },
+    sessionId: { type: String, required: true },
+    sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    receiver: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    groupId: { type: String, default: null },
+    project: { type: Schema.Types.ObjectId, ref: "Project", default: null },
+    type: {
+      type: String,
+      enum: ["text", "attachment"],
+      required: true,
+    },
+    body: { type: String, default: "", maxlength: 4000 },
+    attachments: [{ type: Schema.Types.ObjectId, ref: "ChatAttachment" }],
+    timestamp: { type: Number, required: true },
+    sequence: { type: Number, required: true, min: 0 },
+    status: {
+      type: String,
+      enum: ["queued", "delivered", "read", "failed"],
+      default: "queued",
+    },
+    deliveredAt: { type: Date, default: null },
+    readAt: { type: Date, default: null },
+    hiddenFor: [{ type: Schema.Types.ObjectId, ref: "User" }],
+  },
+  { timestamps: true, collection: "chat_messages" },
+);
+chatMessageSchema.index({ messageId: 1, receiver: 1 }, { unique: true });
+chatMessageSchema.index({ sender: 1, updatedAt: 1, _id: 1 });
+chatMessageSchema.index({ receiver: 1, updatedAt: 1, _id: 1 });
+chatMessageSchema.index({ groupId: 1, updatedAt: 1, _id: 1 });
 export const User = mongoose.model("User", userSchema);
 export const Project = mongoose.model("Project", projectSchema);
 export const ProjectMember = mongoose.model(
@@ -192,4 +234,8 @@ export const UserBlock = mongoose.model("UserBlock", userBlockSchema);
 export const ChatAttachment = mongoose.model(
   "ChatAttachment",
   chatAttachmentSchema,
+);
+export const ChatMessageRecord = mongoose.model(
+  "ChatMessageRecord",
+  chatMessageSchema,
 );

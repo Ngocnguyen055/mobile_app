@@ -1,7 +1,10 @@
 import React, { memo } from "react";
 import { Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
 
-import type { ChatAttachment, StoredMessage } from "@ds01/shared";
+import type {
+  ChatAttachment,
+  StoredMessage,
+} from "../../domain/chat.ts";
 import {
   chatAttachmentUrl,
   getToken,

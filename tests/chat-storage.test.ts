@@ -1,8 +1,6 @@
 import {
   afterAll,
-  afterEach,
   beforeAll,
-  beforeEach,
   describe,
   expect,
   it,
@@ -13,8 +11,10 @@ import {
   type SQLInputValue,
   type SQLOutputValue,
 } from "node:sqlite";
-import type { ChatMessage, StoredMessage } from "../src/shared/index.ts";
-import { WebStore } from "../src/web-peer/store.ts";
+import type {
+  ChatMessage,
+  StoredMessage,
+} from "../src/mobile/domain/chat.ts";
 
 const sqliteState = vi.hoisted(() => ({
   database: null as DatabaseSync | null,
@@ -51,17 +51,17 @@ vi.mock("expo-notifications", () => ({
   scheduleNotificationAsync: vi.fn(),
 }));
 
-const CURRENT = "peer-a";
-const OTHER = "peer-b";
-const OUTSIDER_A = "peer-c";
-const OUTSIDER_B = "peer-d";
+const CURRENT = "000000000000000000000001";
+const OTHER = "000000000000000000000002";
+const OUTSIDER_A = "000000000000000000000003";
+const OUTSIDER_B = "000000000000000000000004";
 const SESSION_ID = "10000000-0000-4000-8000-000000000001";
 const GROUP_ID = "20000000-0000-4000-8000-000000000001";
 const ids = {
   inbound: "00000000-0000-4000-8000-000000000001",
   outbound: "00000000-0000-4000-8000-000000000002",
-  ack: "00000000-0000-4000-8000-000000000003",
   group: "00000000-0000-4000-8000-000000000004",
+  groupReplace: "00000000-0000-4000-8000-000000000008",
   outsider: "00000000-0000-4000-8000-000000000005",
   added: "00000000-0000-4000-8000-000000000006",
   attachment: "00000000-0000-4000-8000-000000000007",
@@ -83,8 +83,6 @@ function textMessage(input: {
     type: "text",
     timestamp: input.timestamp,
     body: `body-${input.messageId}`,
-    mode: "RELAY",
-    attempt: 1,
     sequence: 1,
   };
 }
@@ -110,17 +108,6 @@ const outbound = row(
     groupId: null,
   }),
 );
-const acknowledgement = row({
-  ...textMessage({
-    messageId: ids.ack,
-    senderId: OTHER,
-    receiverId: CURRENT,
-    timestamp: 50,
-  }),
-  type: "ack",
-  body: "",
-  ackFor: ids.outbound,
-});
 const groupMessage = row(
   textMessage({
     messageId: ids.group,
@@ -149,7 +136,6 @@ function seedLegacyMessages(database: DatabaseSync) {
   for (const stored of [
     outbound,
     groupMessage,
-    acknowledgement,
     inbound,
     outsiderMessage,
   ]) {
@@ -210,10 +196,10 @@ describe("MobileStore direct-message migration", () => {
         .prepare("SELECT 1 AS present FROM storage_migrations WHERE name=?")
         .get("messages-group-id-v1"),
     ).toMatchObject({ present: 1 });
-    expect(await store.list()).toHaveLength(5);
+    expect(await store.list()).toHaveLength(4);
   });
 
-  it("stores valid direct rows with a null group and rejects other scopes or types", async () => {
+  it("stores valid direct rows with a null group and rejects other scopes", async () => {
     const store = new MobileStore(CURRENT);
     const added = row(
       textMessage({
@@ -238,9 +224,6 @@ describe("MobileStore direct-message migration", () => {
     await expect(store.putDirect(groupMessage)).rejects.toThrow(
       "does not belong",
     );
-    await expect(store.putDirect(acknowledgement)).rejects.toThrow(
-      "does not belong",
-    );
     await expect(store.putDirect(outsiderMessage)).rejects.toThrow(
       "does not belong",
     );
@@ -249,14 +232,14 @@ describe("MobileStore direct-message migration", () => {
   it("persists contact/block preferences, lists attachments, and deletes only one direct conversation", async () => {
     const store = new MobileStore(CURRENT);
     await store.saveDirectContact({
-      peerId: OTHER,
+      userId: OTHER,
       name: "Bình",
       email: "BINH@example.test",
       updatedAt: 123,
     });
     expect(await store.listDirectContacts()).toEqual([
       {
-        peerId: OTHER,
+        userId: OTHER,
         name: "Bình",
         email: "binh@example.test",
         updatedAt: 123,
@@ -302,63 +285,62 @@ describe("MobileStore direct-message migration", () => {
     await store.setDirectBlocked(OTHER, false);
     expect(await store.isDirectBlocked(OTHER)).toBe(false);
   });
-});
 
-const localStorageRows = new Map<string, string>();
-const localStorageMock: Storage = {
-  get length() {
-    return localStorageRows.size;
-  },
-  clear() {
-    localStorageRows.clear();
-  },
-  getItem(key) {
-    return localStorageRows.get(key) ?? null;
-  },
-  key(index) {
-    return [...localStorageRows.keys()][index] ?? null;
-  },
-  removeItem(key) {
-    localStorageRows.delete(key);
-  },
-  setItem(key, value) {
-    localStorageRows.set(key, value);
-  },
-};
+  it("persists the chat outbox and sync cursor across store instances", async () => {
+    const store = new MobileStore(CURRENT);
+    const item = {
+      id: "outbox-1",
+      targetKind: "direct" as const,
+      targetId: OTHER,
+      payload: {
+        messageId: ids.outbound,
+        sessionId: SESSION_ID,
+        timestamp: 400,
+        sequence: 2,
+        body: "offline message",
+        attachmentIds: [],
+      },
+      createdAt: 400,
+    };
+    await store.enqueueChatOutbox(item);
+    await store.setChatSyncCursor("400:507f1f77bcf86cd799439011");
 
-describe("WebStore direct-message history", () => {
-  beforeEach(() => {
-    localStorageRows.clear();
-    vi.stubGlobal("localStorage", localStorageMock);
+    const reopened = new MobileStore(CURRENT);
+    expect(await reopened.listChatOutbox()).toEqual([item]);
+    expect(await reopened.getChatSyncCursor()).toBe(
+      "400:507f1f77bcf86cd799439011",
+    );
+
+    await reopened.removeChatOutbox(item.id);
+    expect(await reopened.listChatOutbox()).toEqual([]);
   });
-  afterEach(() => vi.unstubAllGlobals());
 
-  it("reopens the existing key and returns deterministic two-way text history", async () => {
-    const store = new WebStore(CURRENT);
-    await store.put(outbound);
-    await store.put(groupMessage);
-    await store.put(acknowledgement);
-    await store.put(outsiderMessage);
-    await store.putDirect(inbound);
+  it("replaces all provisional deliveries for one group message", async () => {
+    const store = new MobileStore(CURRENT);
+    for (const receiverId of [OTHER, OUTSIDER_A])
+      await store.put(
+        row(
+          textMessage({
+            messageId: ids.groupReplace,
+            senderId: CURRENT,
+            receiverId,
+            timestamp: 500,
+            groupId: GROUP_ID,
+          }),
+        ),
+      );
+    expect(
+      (await store.list()).filter(
+        (item) => item.message.messageId === ids.groupReplace,
+      ),
+    ).toHaveLength(2);
 
-    const reopened = new WebStore(CURRENT);
-    const history = await reopened.listDirect(OTHER);
+    await store.deleteGroupDeliveries(ids.groupReplace, GROUP_ID);
 
-    expect(localStorageRows.has(`ds01-history-v1-${CURRENT}`)).toBe(true);
-    expect(history.map((item) => item.message.messageId)).toEqual([
-      ids.inbound,
-      ids.outbound,
-    ]);
-    expect(await new WebStore(OTHER).listDirect(CURRENT)).toEqual([]);
-    expect(await reopened.list()).toHaveLength(5);
-    await expect(reopened.putDirect(groupMessage)).rejects.toThrow(
-      "does not belong",
-    );
-    await expect(reopened.putDirect(acknowledgement)).rejects.toThrow(
-      "does not belong",
-    );
-    await expect(reopened.putDirect(outsiderMessage)).rejects.toThrow(
-      "does not belong",
-    );
+    expect(
+      (await store.list()).filter(
+        (item) => item.message.messageId === ids.groupReplace,
+      ),
+    ).toEqual([]);
   });
 });

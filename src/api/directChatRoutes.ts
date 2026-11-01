@@ -17,7 +17,8 @@ import {
   unblockChatUser,
   validChatAttachmentMime,
 } from "./directChatService.ts";
-import { HttpError } from "./projectAccess.ts";
+import { getProjectChatGroup, HttpError } from "./projectAccess.ts";
+import { hideQueuedMessagesFromBlockedUser } from "./chatPersistenceService.ts";
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const searchInput = z
@@ -28,7 +29,7 @@ const upload = multer({
   limits: {
     fileSize: CHAT_ATTACHMENT_MAX_BYTES,
     files: CHAT_ATTACHMENT_MAX_FILES,
-    fields: 1,
+    fields: 2,
     fieldSize: 200,
   },
 });
@@ -36,7 +37,6 @@ const upload = multer({
 function uploadedFiles(files: Express.Request["files"]) {
   return Array.isArray(files) ? files : [];
 }
-
 export function installDirectChatRoutes(app: Express) {
   app.get("/users/search", async (req, res) => {
     const { email } = searchInput.parse(req.query);
@@ -56,10 +56,12 @@ export function installDirectChatRoutes(app: Express) {
   });
 
   app.post("/chat/blocks/:userId", async (req, res) => {
+    const blockedId = objectId.parse(req.params.userId);
     const user = await blockChatUser(
       req.userId!,
-      objectId.parse(req.params.userId),
+      blockedId,
     );
+    await hideQueuedMessagesFromBlockedUser(req.userId!, blockedId);
     return res.status(201).json({ blocked: true, user });
   });
 
@@ -80,19 +82,47 @@ export function installDirectChatRoutes(app: Express) {
     "/chat/attachments",
     upload.array("files", CHAT_ATTACHMENT_MAX_FILES),
     async (req, res) => {
-      const receiverId = objectId.parse(req.body.receiverId);
+      const receiverResult = objectId.safeParse(req.body.receiverId);
+      const groupResult = z.string().uuid().safeParse(req.body.groupId);
+      if (receiverResult.success === groupResult.success)
+        throw new HttpError(
+          400,
+          "exactly one receiverId or groupId is required",
+        );
       const files = uploadedFiles(req.files);
       if (!files.length)
         throw new HttpError(400, "at least one file is required");
       if (files.some((file) => !validChatAttachmentMime(file.mimetype)))
         throw new HttpError(400, "unsupported attachment type");
-      if (!(await canDirectChat(req.userId!, receiverId)))
-        throw new HttpError(403, "direct chat is not allowed");
+      let target:
+        | { receiver: string; groupId: null; project: null }
+        | { receiver: null; groupId: string; project: string };
+      if (receiverResult.success) {
+        if (!(await canDirectChat(req.userId!, receiverResult.data)))
+          throw new HttpError(403, "direct chat is not allowed");
+        target = {
+          receiver: receiverResult.data,
+          groupId: null,
+          project: null,
+        };
+      } else {
+        if (!groupResult.success)
+          throw new HttpError(400, "valid groupId is required");
+        const group = await getProjectChatGroup(groupResult.data);
+        if (!group?.members.includes(req.userId!))
+          throw new HttpError(403, "project chat access denied");
+        if (group.archived) throw new HttpError(409, "project archived");
+        target = {
+          receiver: null,
+          groupId: group.id,
+          project: group.projectId!,
+        };
+      }
 
       const attachments = await ChatAttachment.create(
         files.map((file) => ({
           sender: req.userId,
-          receiver: receiverId,
+          ...target,
           name: safeChatAttachmentName(file.originalname),
           mime: file.mimetype,
           size: file.size,
@@ -107,14 +137,17 @@ export function installDirectChatRoutes(app: Express) {
     const attachment = await ChatAttachment.findById(
       objectId.parse(req.params.attachmentId),
     );
-    if (
-      !attachment ||
-      !canReadChatAttachment(
-        String(attachment.sender),
-        String(attachment.receiver),
-        req.userId!,
-      )
-    )
+    if (!attachment) throw new HttpError(404, "attachment not found");
+    const allowed = attachment.groupId
+      ? !!(await getProjectChatGroup(attachment.groupId))?.members.includes(
+          req.userId!,
+        )
+      : canReadChatAttachment(
+          String(attachment.sender),
+          String(attachment.receiver),
+          req.userId!,
+        );
+    if (!allowed)
       throw new HttpError(404, "attachment not found");
     res.setHeader(
       "Content-Type",
@@ -133,11 +166,4 @@ export function installDirectChatRoutes(app: Express) {
     );
     return res.send(attachment.data);
   });
-}
-
-export async function directChatAuthorizationResponse(
-  senderId: string,
-  receiverId: string,
-) {
-  return { allowed: await canDirectChat(senderId, receiverId) };
 }

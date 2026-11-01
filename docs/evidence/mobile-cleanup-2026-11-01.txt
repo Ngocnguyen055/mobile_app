@@ -1,0 +1,58 @@
+MOBILE-ONLY CLEANUP - LOCAL AUTOMATED EVIDENCE
+Date: 2026-11-01 (Asia/Saigon)
+Workspace: C:\Projects\Mobile_App
+
+Scope
+- Removed DS01 shared/signaling/relay/web-peer source and their tests/scripts.
+- Removed active Google Calendar SDK, service, hook, UI and environment variables.
+- Mobile chat uses REST API + MongoDB store-and-forward and SQLite outbox/cursor.
+- Documentation was rewritten for the current Mobile architecture.
+
+1. npm.cmd run typecheck
+   PASS
+   tsc --noEmit -p src/api
+   tsc --noEmit -p src/mobile
+   tsc --noEmit -p scripts
+
+2. npm.cmd run lint
+   PASS
+   eslint src tests scripts --ext .ts,.tsx
+
+3. npm.cmd test
+   PASS
+   Test Files: 19 passed (19)
+   Tests: 82 passed (82)
+   Duration reported by Vitest: 4.45s
+   Includes HTTP-route coverage for valid strict direct/group message payloads
+   and replacement of stale provisional group deliveries.
+   Note: Node printed ExperimentalWarning for its SQLite feature.
+
+4. npm.cmd run export -w @student-planner/mobile
+   PASS
+   Android Bundled: 812 modules
+   Hermes bundle: 2.4 MB
+   Output: dist
+   Note: NO_COLOR/FORCE_COLOR warnings are non-fatal.
+
+5. Dependency audit
+   npm ls found no installed react-native-webrtc,
+   @react-native-google-signin/google-signin, socket.io, socket.io-client,
+   or react-native-get-random-values dependency in the application tree.
+
+6. Android native debug build
+   Command: gradlew.bat app:assembleDebug -x lint -x test --no-daemon
+   PASS - BUILD SUCCESSFUL in 3m 56s
+   304 actionable tasks: 56 executed, 248 up-to-date
+   APK: src/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+   Bytes: 190090630
+   SHA256: 9C26D4B4241A07E3D37455D100EF6952065D8603A6F9C1411E6B95258374AE7B
+   Non-fatal warnings: Android SDK XML tool-version mismatch, deprecated
+   ReactNativeHost/Gradle APIs, and debug manifest replacement notices.
+
+Not proven by this run
+- The debug APK was built but not installed or opened on an emulator/phone.
+- No release-signed APK/AAB was built.
+- No MongoDB Atlas integration script was run.
+- Offline chat was not exercised between two devices.
+- Android notification delivery was not observed.
+- Google Calendar is future work and has no runtime implementation in this version.

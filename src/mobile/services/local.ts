@@ -2,14 +2,28 @@
 import * as SQLite from "expo-sqlite";
 import * as Notifications from "expo-notifications";
 import {
+  assertUserId,
   isDirectMessageBetween,
-  peerIdSchema,
   type DirectChatContact,
-  type DirectChatStore,
   type StoredMessage,
   type MessageStatus,
-} from "@ds01/shared";
+} from "../domain/chat.ts";
 import type { CalendarEvent, Task } from "./api.ts";
+
+export type ChatOutboxItem = {
+  id: string;
+  targetKind: "direct" | "group";
+  targetId: string;
+  payload: {
+    messageId: string;
+    sessionId: string;
+    timestamp: number;
+    sequence: number;
+    body: string;
+    attachmentIds: string[];
+  };
+  createdAt: number;
+};
 
 const database = SQLite.openDatabaseAsync("ds01-chat.db");
 let initialized: typeof database | undefined;
@@ -17,8 +31,28 @@ async function db() {
   initialized ||= (async () => {
     const connection = await database;
     await connection.execAsync(
-      "CREATE TABLE IF NOT EXISTS messages (scope TEXT NOT NULL, message_id TEXT NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, group_id TEXT, timestamp INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(scope,message_id,sender_id,receiver_id)); CREATE INDEX IF NOT EXISTS messages_order ON messages(scope,timestamp); CREATE TABLE IF NOT EXISTS storage_migrations (name TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS reminders (task_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT); CREATE TABLE IF NOT EXISTS event_reminders (event_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS direct_chat_preferences (scope TEXT NOT NULL, peer_id TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,peer_id)); CREATE TABLE IF NOT EXISTS direct_chat_contacts (scope TEXT NOT NULL, peer_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,peer_id));",
+      "CREATE TABLE IF NOT EXISTS messages (scope TEXT NOT NULL, message_id TEXT NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, group_id TEXT, timestamp INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(scope,message_id,sender_id,receiver_id)); CREATE INDEX IF NOT EXISTS messages_order ON messages(scope,timestamp); CREATE TABLE IF NOT EXISTS storage_migrations (name TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS reminders (task_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT); CREATE TABLE IF NOT EXISTS event_reminders (event_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS direct_chat_preferences (scope TEXT NOT NULL, user_id TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS direct_chat_contacts (scope TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS chat_outbox (scope TEXT NOT NULL, id TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(scope,id)); CREATE INDEX IF NOT EXISTS chat_outbox_order ON chat_outbox(scope,created_at,id); CREATE TABLE IF NOT EXISTS chat_sync_state (scope TEXT PRIMARY KEY, cursor TEXT);",
     );
+    const preferenceColumns = await connection.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(direct_chat_preferences)",
+    );
+    if (
+      preferenceColumns.some((column) => column.name === "peer_id") &&
+      !preferenceColumns.some((column) => column.name === "user_id")
+    )
+      await connection.execAsync(
+        "ALTER TABLE direct_chat_preferences RENAME COLUMN peer_id TO user_id",
+      );
+    const contactColumns = await connection.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(direct_chat_contacts)",
+    );
+    if (
+      contactColumns.some((column) => column.name === "peer_id") &&
+      !contactColumns.some((column) => column.name === "user_id")
+    )
+      await connection.execAsync(
+        "ALTER TABLE direct_chat_contacts RENAME COLUMN peer_id TO user_id",
+      );
     const messageColumns = await connection.getAllAsync<{ name: string }>(
       "PRAGMA table_info(messages)",
     );
@@ -77,7 +111,7 @@ async function db() {
   })();
   return initialized;
 }
-export class MobileStore implements DirectChatStore {
+export class MobileStore {
   constructor(private scope: string) {}
   async put(row: StoredMessage) {
     const conn = await db();
@@ -95,16 +129,16 @@ export class MobileStore implements DirectChatStore {
     );
   }
   async putDirect(row: StoredMessage) {
-    const currentPeerId = peerIdSchema.parse(this.scope);
+    const currentUserId = assertUserId(this.scope);
     const message = row.message;
-    const otherPeerId =
-      message.senderId === currentPeerId
+    const otherUserId =
+      message.senderId === currentUserId
         ? message.receiverId
         : message.senderId;
-    peerIdSchema.parse(otherPeerId);
+    assertUserId(otherUserId);
     if (
-      otherPeerId === currentPeerId ||
-      !isDirectMessageBetween(message, currentPeerId, otherPeerId)
+      otherUserId === currentUserId ||
+      !isDirectMessageBetween(message, currentUserId, otherUserId)
     )
       throw new Error("direct message does not belong to this store");
     await this.put(row);
@@ -142,11 +176,11 @@ export class MobileStore implements DirectChatStore {
       status: row.status,
     }));
   }
-  async listDirect(peerId: string): Promise<StoredMessage[]> {
-    const currentPeerId = peerIdSchema.parse(this.scope);
-    const otherPeerId = peerIdSchema.parse(peerId);
-    if (currentPeerId === otherPeerId)
-      throw new Error("direct conversation requires another peer");
+  async listDirect(userId: string): Promise<StoredMessage[]> {
+    const currentUserId = assertUserId(this.scope);
+    const otherUserId = assertUserId(userId);
+    if (currentUserId === otherUserId)
+      throw new Error("direct conversation requires another user");
     const conn = await db();
     const rows = await conn.getAllAsync<{
       payload: string;
@@ -154,10 +188,10 @@ export class MobileStore implements DirectChatStore {
     }>(
       "SELECT payload,status FROM messages WHERE scope=? AND group_id IS NULL AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?)) ORDER BY timestamp,message_id,sender_id,receiver_id",
       this.scope,
-      currentPeerId,
-      otherPeerId,
-      otherPeerId,
-      currentPeerId,
+      currentUserId,
+      otherUserId,
+      otherUserId,
+      currentUserId,
     );
     return rows
       .map((row) => ({
@@ -165,78 +199,90 @@ export class MobileStore implements DirectChatStore {
         status: row.status,
       }))
       .filter((row) =>
-        isDirectMessageBetween(row.message, currentPeerId, otherPeerId),
+        isDirectMessageBetween(row.message, currentUserId, otherUserId),
       );
   }
-  async listDirectAttachments(peerId: string): Promise<StoredMessage[]> {
-    return (await this.listDirect(peerId)).filter(
+  async listDirectAttachments(userId: string): Promise<StoredMessage[]> {
+    return (await this.listDirect(userId)).filter(
       (row) => row.message.type === "attachment",
     );
   }
-  async deleteDirect(peerId: string): Promise<void> {
-    const currentPeerId = peerIdSchema.parse(this.scope);
-    const otherPeerId = peerIdSchema.parse(peerId);
-    if (currentPeerId === otherPeerId)
-      throw new Error("direct conversation requires another peer");
+  async deleteDirect(userId: string): Promise<void> {
+    const currentUserId = assertUserId(this.scope);
+    const otherUserId = assertUserId(userId);
+    if (currentUserId === otherUserId)
+      throw new Error("direct conversation requires another user");
     const conn = await db();
     await conn.runAsync(
       "DELETE FROM messages WHERE scope=? AND group_id IS NULL AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))",
       this.scope,
-      currentPeerId,
-      otherPeerId,
-      otherPeerId,
-      currentPeerId,
+      currentUserId,
+      otherUserId,
+      otherUserId,
+      currentUserId,
     );
   }
-  async setDirectBlocked(peerId: string, blocked: boolean): Promise<void> {
-    const currentPeerId = peerIdSchema.parse(this.scope);
-    const otherPeerId = peerIdSchema.parse(peerId);
-    if (currentPeerId === otherPeerId) throw new Error("cannot block yourself");
+  async deleteGroupDeliveries(
+    messageId: string,
+    groupId: string,
+  ): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "DELETE FROM messages WHERE scope=? AND message_id=? AND group_id=?",
+      this.scope,
+      messageId,
+      groupId,
+    );
+  }
+  async setDirectBlocked(userId: string, blocked: boolean): Promise<void> {
+    const currentUserId = assertUserId(this.scope);
+    const otherUserId = assertUserId(userId);
+    if (currentUserId === otherUserId) throw new Error("cannot block yourself");
     const conn = await db();
     if (!blocked) {
       await conn.runAsync(
-        "DELETE FROM direct_chat_preferences WHERE scope=? AND peer_id=?",
+        "DELETE FROM direct_chat_preferences WHERE scope=? AND user_id=?",
         this.scope,
-        otherPeerId,
+        otherUserId,
       );
       return;
     }
     await conn.runAsync(
-      "INSERT INTO direct_chat_preferences(scope,peer_id,blocked) VALUES(?,?,1) ON CONFLICT(scope,peer_id) DO UPDATE SET blocked=1",
+      "INSERT INTO direct_chat_preferences(scope,user_id,blocked) VALUES(?,?,1) ON CONFLICT(scope,user_id) DO UPDATE SET blocked=1",
       this.scope,
-      otherPeerId,
+      otherUserId,
     );
   }
-  async isDirectBlocked(peerId: string): Promise<boolean> {
-    const otherPeerId = peerIdSchema.parse(peerId);
+  async isDirectBlocked(userId: string): Promise<boolean> {
+    const otherUserId = assertUserId(userId);
     const conn = await db();
     return !!(await conn.getFirstAsync(
-      "SELECT 1 FROM direct_chat_preferences WHERE scope=? AND peer_id=? AND blocked=1",
+      "SELECT 1 FROM direct_chat_preferences WHERE scope=? AND user_id=? AND blocked=1",
       this.scope,
-      otherPeerId,
+      otherUserId,
     ));
   }
   async listDirectBlocked(): Promise<string[]> {
     const conn = await db();
-    const rows = await conn.getAllAsync<{ peer_id: string }>(
-      "SELECT peer_id FROM direct_chat_preferences WHERE scope=? AND blocked=1 ORDER BY peer_id",
+    const rows = await conn.getAllAsync<{ user_id: string }>(
+      "SELECT user_id FROM direct_chat_preferences WHERE scope=? AND blocked=1 ORDER BY user_id",
       this.scope,
     );
-    return rows.map((row) => row.peer_id);
+    return rows.map((row) => row.user_id);
   }
   async saveDirectContact(contact: DirectChatContact): Promise<void> {
-    const currentPeerId = peerIdSchema.parse(this.scope);
-    const peerId = peerIdSchema.parse(contact.peerId);
+    const currentUserId = assertUserId(this.scope);
+    const userId = assertUserId(contact.userId);
     const name = contact.name.trim();
     const email = contact.email.trim().toLowerCase();
-    if (peerId === currentPeerId) throw new Error("cannot save yourself");
+    if (userId === currentUserId) throw new Error("cannot save yourself");
     if (!name || !email || !Number.isSafeInteger(contact.updatedAt))
       throw new Error("invalid direct contact");
     const conn = await db();
     await conn.runAsync(
-      "INSERT INTO direct_chat_contacts(scope,peer_id,name,email,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,peer_id) DO UPDATE SET name=excluded.name,email=excluded.email,updated_at=excluded.updated_at",
+      "INSERT INTO direct_chat_contacts(scope,user_id,name,email,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,user_id) DO UPDATE SET name=excluded.name,email=excluded.email,updated_at=excluded.updated_at",
       this.scope,
-      peerId,
+      userId,
       name,
       email,
       contact.updatedAt,
@@ -245,28 +291,84 @@ export class MobileStore implements DirectChatStore {
   async listDirectContacts(): Promise<DirectChatContact[]> {
     const conn = await db();
     const rows = await conn.getAllAsync<{
-      peer_id: string;
+      user_id: string;
       name: string;
       email: string;
       updated_at: number;
     }>(
-      "SELECT peer_id,name,email,updated_at FROM direct_chat_contacts WHERE scope=? ORDER BY updated_at DESC,peer_id",
+      "SELECT user_id,name,email,updated_at FROM direct_chat_contacts WHERE scope=? ORDER BY updated_at DESC,user_id",
       this.scope,
     );
     return rows.map((row) => ({
-      peerId: row.peer_id,
+      userId: row.user_id,
       name: row.name,
       email: row.email,
       updatedAt: row.updated_at,
     }));
   }
-  async removeDirectContact(peerId: string): Promise<void> {
-    const otherPeerId = peerIdSchema.parse(peerId);
+  async removeDirectContact(userId: string): Promise<void> {
+    const otherUserId = assertUserId(userId);
     const conn = await db();
     await conn.runAsync(
-      "DELETE FROM direct_chat_contacts WHERE scope=? AND peer_id=?",
+      "DELETE FROM direct_chat_contacts WHERE scope=? AND user_id=?",
       this.scope,
-      otherPeerId,
+      otherUserId,
+    );
+  }
+  async enqueueChatOutbox(item: ChatOutboxItem): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "INSERT OR REPLACE INTO chat_outbox(scope,id,target_kind,target_id,payload,created_at) VALUES(?,?,?,?,?,?)",
+      this.scope,
+      item.id,
+      item.targetKind,
+      item.targetId,
+      JSON.stringify(item.payload),
+      item.createdAt,
+    );
+  }
+  async listChatOutbox(): Promise<ChatOutboxItem[]> {
+    const conn = await db();
+    const rows = await conn.getAllAsync<{
+      id: string;
+      target_kind: "direct" | "group";
+      target_id: string;
+      payload: string;
+      created_at: number;
+    }>(
+      "SELECT id,target_kind,target_id,payload,created_at FROM chat_outbox WHERE scope=? ORDER BY created_at,id",
+      this.scope,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      targetKind: row.target_kind,
+      targetId: row.target_id,
+      payload: JSON.parse(row.payload),
+      createdAt: row.created_at,
+    }));
+  }
+  async removeChatOutbox(id: string): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "DELETE FROM chat_outbox WHERE scope=? AND id=?",
+      this.scope,
+      id,
+    );
+  }
+  async getChatSyncCursor(): Promise<string | null> {
+    const conn = await db();
+    const row = await conn.getFirstAsync<{ cursor: string | null }>(
+      "SELECT cursor FROM chat_sync_state WHERE scope=?",
+      this.scope,
+    );
+    return row?.cursor || null;
+  }
+  async setChatSyncCursor(cursor: string | null): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "INSERT INTO chat_sync_state(scope,cursor) VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET cursor=excluded.cursor",
+      this.scope,
+      cursor,
     );
   }
 }

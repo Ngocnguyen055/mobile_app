@@ -1,45 +1,129 @@
-# Giao thức DS01
+# Giao thức REST chat
 
-## Kết nối và danh tính
+Tài liệu này mô tả giao thức chat của ứng dụng Mobile. Đây không phải giao thức P2P: mọi thiết bị giao tiếp với API bằng HTTPS và JWT.
 
-1. Peer nối signaling, gửi `peer:register {peerId, identityProof}`. ID 24 ký tự hex (Android user ID Mongo) phải có API JWT với `sub` khớp. Peer web dùng secret ngẫu nhiên tối thiểu 16 ký tự; signaling giữ hash trong RAM và từ chối ID trùng hoặc secret khác. ID đang online là duy nhất.
-2. Signaling trả `token`, danh sách `peers`, `groups`. Peer gửi `peer:heartbeat` mỗi 10 giây; server timeout 30 giây, phát `presence` khi danh sách đổi. `peer:list` và `presence` chỉ trả/phát cho socket đã đăng ký hiện hành. Socket.IO cũng phát hiện disconnect.
-3. Relay nhận token ký bằng `PEER_SECRET` từ signaling qua Socket.IO auth. Một Peer ID ánh xạ tới socket hiện hành. Kết nối mới cùng ID đóng kết nối cũ.
-4. Nhóm demo web dùng `group:create`, `group:change {groupId,memberId,action,version}` ở signaling, owner thêm và owner hoặc chính thành viên xóa. `version` chặn sửa từ bản cũ; nhóm demo nằm trong RAM. **Nhóm dự án Android** có `projectId`, UUID ổn định và `chatRevision` lưu MongoDB; được tạo cùng dự án, membership chỉ sửa qua REST API theo vai trò. `group:change` từ client bị từ chối đối với nhóm dự án. Thành viên offline vẫn ở danh sách nhưng **không nhận tin gửi khi offline**.
-5. Client đã đăng ký gọi `peer:lookup {peerId}` để tìm một peer cụ thể; Android truyền MongoDB user ID. Response gồm `peerId`, `online`, heartbeat `lastSeen` và các giao thức kết nối được hỗ trợ; offline/unknown có `lastSeen`/`connection = null`. Không trả socket ID, IP hay token của người khác. `PeerClient.lookupPeer()` kiểm tra schema của response. Android tìm tài khoản bằng REST `GET /users/search?email=`; discovery không chuyển nội dung chat. Với peer tài khoản, signaling kiểm tra block qua API nội bộ trước khi discovery/chuyển SDP/ICE.
+## Message envelope
 
-## Mở DIRECT và fallback
+```ts
+type ChatMessage = {
+  messageId: string;       // UUID do client tạo, dùng chống lặp
+  sessionId: string;       // UUID của lượt gửi
+  senderId: string;        // API lấy từ JWT
+  receiverId: string;      // một user nhận cụ thể
+  groupId?: string | null; // null cho 1:1, UUID cho nhóm
+  type: "text" | "attachment";
+  timestamp: number;       // epoch milliseconds
+  body: string;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    mime: string;
+    size: number;
+  }>;
+  sequence: number;
+};
+```
 
-Peer gửi trước gọi `ensureDirect`. ID thấp hơn tạo offer; ID cao hơn gửi `request` để ID thấp hơn tạo offer, tránh glare khi hai bên cùng mở. `signal:send` chuyển offer/answer/ICE đúng peer, không có body chat. Mỗi cặp tạo DataChannel `ordered: true`. Nếu channel không mở sau 5 giây, gửi envelope qua relay. Khi `connectionState` failed/disconnected/closed hoặc channel close, nhãn đổi RELAY và lần gửi tiếp dùng relay. Khi DIRECT hoạt động, không gọi `relay:send` cho body đó. Nếu gửi DIRECT mà không có ACK sau 2 giây, retry qua relay tối đa hai lần nữa. Đường mạng thật có thể bị firewall/NAT chặn; STUN công cộng chỉ hỗ trợ tìm ứng viên, không đảm bảo kết nối.
+Tin 1:1 có `groupId = null`. Tin nhóm được API fan-out thành một envelope/delivery cho mỗi `receiverId`; các record giữ cùng `messageId` và `groupId`.
 
-## Envelope và ACK
+## Trạng thái
+
+- `queued`: API đã lưu, người nhận chưa sync.
+- `delivered`: API đã trả tin cho người nhận qua endpoint sync.
+- `read`: người nhận đã mở hội thoại và xác nhận đọc.
+- `failed`: Mobile xác định request không thể retry, ví dụ payload sai hoặc bị chặn.
+
+SQLite có thể giữ `pending`, `sent`, `received` để tương thích lịch sử cục bộ; trạng thái authoritative của tin đã lên server là queued/delivered/read.
+
+## Endpoint
+
+Tất cả endpoint dưới đây cần `Authorization: Bearer <JWT>`.
+
+```text
+GET    /users/search?email=...
+GET    /users/:userId
+GET    /chat/blocks
+POST   /chat/blocks/:userId
+DELETE /chat/blocks/:userId
+
+POST   /chat/attachments
+GET    /chat/attachments/:attachmentId
+
+POST   /chat/messages/direct
+POST   /chat/messages/group
+GET    /chat/messages/sync?cursor=...
+POST   /chat/messages/read
+DELETE /chat/conversations/direct/:userId
+```
+
+### Tạo tin 1:1
 
 ```json
 {
-  "messageId": "UUID v4",
-  "sessionId": "UUID v4",
-  "senderId": "peer-a",
-  "receiverId": "peer-b",
-  "groupId": "UUID v4 nếu chat nhóm",
-  "type": "text",
-  "timestamp": 1760000000000,
+  "receiverId": "507f1f77bcf86cd799439011",
+  "messageId": "0f6c9b1c-038a-4a25-b749-bc51df265da8",
+  "sessionId": "32c94056-7164-47ab-b3a5-94ebf943076e",
+  "timestamp": 1793450000000,
+  "sequence": 1793450000000,
   "body": "Xin chào",
-  "mode": "DIRECT",
-  "attempt": 1,
-  "sequence": 1
+  "attachmentIds": []
 }
 ```
 
-`type: ack` có `ackFor: messageId`, `body: ""`; mỗi người nhận tự tạo ACK sau khi đã lưu message. ACK của Socket.IO server chỉ chứng minh relay nhận để chuyển tiếp, không thay ACK ứng dụng. Sender lưu `pending → sent → delivered` hoặc `failed`; nhóm có một bản ghi/trạng thái ACK cho mỗi receiver. Message ID trùng từ cùng sender bị loại khỏi lịch sử, nhưng receiver vẫn ACK lại để sender thoát retry. Có tối đa 3 attempt, mỗi attempt 2 giây chờ ACK. Nếu relay cũng mất thì báo failed, không hứa giao sau khi peer offline. `sequence` theo người gửi và cuộc trò chuyện, DataChannel ordered; lịch sử hiển thị theo timestamp rồi ID. Đồng hồ hai máy lệch có thể làm thứ tự xen kẽ khác thực tế, không có total order phân tán.
+API bỏ qua mọi ý định giả sender và dùng user trong JWT. Nếu một trong hai phía đã chặn phía kia, request bị từ chối.
 
-Với chat cá nhân, `groupId` có thể bị bỏ, `undefined` hoặc `null`. `groupId: ""` bị từ chối; tin nhóm vẫn phải có UUID hợp lệ. `sendDirect(receiverId, body)` dùng cùng engine gửi/ACK nhưng không gắn groupId. Tệp dùng `type: "attachment"` và tối đa ba metadata `{id,name,mime,size}`; bytes được tải qua REST có JWT, không đi trong DataChannel/relay. Lịch sử cá nhân lọc đúng A↔B, không gắn nhóm và giữ tin text hoặc attachment; lịch sử nhóm vẫn lọc UUID nhóm. Chi tiết service, query SQL và cách gọi client nằm trong [direct-chat.md](direct-chat.md).
+### Tạo tin nhóm
 
-Relay từ chối envelope >8192 byte, body >4000 ký tự, ID sai format, sender khác peer đã xác thực, mode khác `RELAY`, receiver offline, hoặc nhóm không có cả sender và receiver. Log `REGISTER`, `DISCONNECT`, `FORWARD messageId`, `REJECT` ở relay. Signaling chỉ log `REGISTER`, `GROUP`, `offer/answer/ice/request`, không log nội dung chat. Để chứng minh DIRECT, ghi cùng Message ID trong log peer `DIRECT SEND` và kiểm tra relay **không** có `FORWARD` ID đó; để chứng minh RELAY, đối chiếu `RELAY SEND` và `FORWARD` cùng ID.
+Payload giống direct nhưng thay `receiverId` bằng `groupId`. API tìm project theo `chatGroupId`, kiểm tra project chưa lưu trữ và sender còn là thành viên, sau đó lấy danh sách người nhận từ membership hiện hành.
 
-## Quyền nhóm dự án
+### Đồng bộ
 
-Client gọi `project:group {projectId}` để lấy nhóm hiện tại; signaling dùng `API_INTERNAL_URL` và `x-peer-secret` để đọc API nội bộ. `Group` bổ sung `projectId?: string`, `archived?: boolean`. Signaling poll khoảng 2 giây và phát `group:update` cho cả thành viên cũ và mới; client bị loại xóa nhóm khỏi danh sách nhưng không xóa lịch sử local.
+```json
+{
+  "items": [
+    { "message": {}, "status": "delivered" }
+  ],
+  "nextCursor": "opaque-cursor",
+  "hasMore": false
+}
+```
 
-`group:authorize {groupId, otherPeerId}` kiểm tra actor đã đăng ký, cả hai thuộc nhóm và dự án chưa lưu trữ. PeerClient dùng lệnh này trước khi gửi / nhận text hoặc ACK qua DIRECT / RELAY; relay đọc lại nhóm qua signaling trước chuyển tiếp. Các truy vấn quyền không chứa chat body. Khi API hoặc signaling không sẵn sàng, tin nhóm bị từ chối thay vì dùng ACL cache cũ. Vì vậy chat nhóm vẫn cần dịch vụ kiểm tra quyền dù DataChannel đã mở. Tin 1:1 dùng endpoint nội bộ riêng để signaling/relay kiểm tra quan hệ chặn; peer nhận còn kiểm tra cache block cục bộ đối với DataChannel đã mở.
+Cursor là giá trị opaque; client chỉ lưu và gửi lại, không tự phân tích. Mobile upsert từng item theo khóa message/delivery rồi mới lưu cursor mới. Endpoint có phân trang và client lặp đến khi `hasMore = false` hoặc đạt giới hạn an toàn.
 
-Sau khi xóa thành viên / lưu trữ, API và client tuân thủ giao thức từ chối tin nhóm mới. Tin đã lưu trên thiết bị không bị thu hồi; máy chủ không thể ngăn phần mềm P2P cố ý bỏ kiểm tra gửi byte trên kết nối trực tiếp. Restart signaling không đổi ID nhóm dự án đã lưu Mongo; nhóm demo RAM cần tạo lại. Xem [hierarchical-projects.md](hierarchical-projects.md).
+### Xác nhận đọc
+
+```json
+{ "messageIds": ["uuid-1", "uuid-2"] }
+```
+
+API chỉ đánh dấu các delivery có receiver là user hiện tại. User khác không thể xác nhận thay.
+
+## Attachment
+
+Upload dùng `multipart/form-data`, tối đa 3 file và 512 KiB/file. Request phải có đúng một target: `receiverId` hoặc `groupId`. Sau upload, client đưa các ID nhận được vào `attachmentIds` của message. Quyền tải kiểm tra sender/receiver của direct hoặc membership hiện tại của group.
+
+Bytes hiện lưu trong MongoDB. Đây là giới hạn có chủ đích cho bài tập; khi mở rộng nên chuyển sang object storage và URL ký ngắn hạn.
+
+## Chống trùng, thứ tự và retry
+
+- Unique key `(messageId, receiver)` khiến retry cùng message không tạo bubble thứ hai.
+- Trong hội thoại, Mobile sắp theo `timestamp`, `messageId`, sender và receiver để có thứ tự xác định.
+- Mobile ghi message và outbox SQLite trước khi gọi API.
+- Lỗi mạng/5xx giữ outbox để retry.
+- Lỗi 4xx do payload/quyền chuyển message sang failed và bỏ request không hợp lệ khỏi outbox.
+
+Không có hàng đợi relay hoặc ACK từ peer. `delivered/read` là ACK ở cấp ứng dụng do API và thiết bị nhận cập nhật.
+
+## Xóa và block
+
+Xóa hội thoại thêm user hiện tại vào `hiddenFor` và xóa cache SQLite phía họ. Người còn lại không mất lịch sử. Block là quan hệ có hướng trong `user_blocks`; server từ chối tin 1:1 mới nếu một trong hai chiều tồn tại. Block không tự xóa lịch sử cũ.
+
+## Lỗi chuẩn
+
+- `400`: schema/ID/cursor sai.
+- `401`: JWT thiếu hoặc hết hạn.
+- `403`: bị chặn, ngoài membership hoặc không có quyền tệp.
+- `404`: user/group/message/tệp không tồn tại hoặc bị che theo quyền.
+- `409`: message ID xung đột với nội dung khác hoặc version conflict.
+- `413`: file vượt giới hạn.
+- `423`: dự án đã lưu trữ.

@@ -1,5 +1,5 @@
 {
-  "name": "@ds01/mobile",
+  "name": "@student-planner/mobile",
   "version": "1.0.0",
   "private": true,
   "main": "index.ts",
@@ -11,10 +11,7 @@
     "ios": "expo run:ios"
   },
   "dependencies": {
-    "@config-plugins/react-native-webrtc": "^13.0.0",
-    "@ds01/shared": "*",
     "@react-native-community/datetimepicker": "8.4.4",
-    "@react-native-google-signin/google-signin": "^16.0.0",
     "dotenv": "^16.5.0",
     "expo": "~54.0.37",
     "expo-crypto": "~15.0.9",
@@ -26,11 +23,6 @@
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "~16.0.10",
     "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-get-random-values": "~1.11.0",
-    "react-native-webrtc": "124.0.6"
-  },
-  "devDependencies": {
-    "@types/react": "~19.1.10"
+    "react-native": "0.81.5"
   }
 }

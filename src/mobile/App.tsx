@@ -16,7 +16,6 @@ import { useCalendarEvents } from "./hooks/useCalendarEvents.ts";
 import { useProjects } from "./hooks/useProjects.ts";
 import { useProjectWorkspace } from "./hooks/useProjectWorkspace.ts";
 import { useProjectCoordinator } from "./hooks/useProjectCoordinator.ts";
-import { useGoogleSync } from "./hooks/useGoogleSync.ts";
 import { useAppLifecycle } from "./hooks/useAppLifecycle.ts";
 import { useAppActions } from "./hooks/useAppActions.ts";
 import LoadingScreen from "./components/ui/LoadingScreen.tsx";
@@ -93,10 +92,6 @@ export default function App() {
     openEventFromCalendar,
     openNotification,
   } = projectCoordinator;
-  const googleController = useGoogleSync({
-    userId: user?._id,
-    loadCalendar,
-  });
   const { run, logout, selectMainView, selectProjectTab } = useAppActions({
     projectsController,
     workspaceController,
@@ -104,7 +99,6 @@ export default function App() {
     reminderController,
     tasksController,
     chatController,
-    googleController,
     clearAuth,
     setError,
     setMainView,
@@ -144,7 +138,6 @@ export default function App() {
       tab={tab}
       drawerVisible={drawerVisible}
       error={error}
-      googleEmail={googleController.googleEmail}
       contentScroll={contentScroll}
       projectsController={projectsController}
       workspaceController={workspaceController}
@@ -162,8 +155,6 @@ export default function App() {
       onProjectChanged={projectChanged}
       onOpenCalendarEvent={openEventFromCalendar}
       onOpenNotification={openNotification}
-      onConnectGoogle={googleController.connectGoogle}
-      onSyncGoogle={googleController.syncGoogle}
       onLogout={logout}
     />
   );

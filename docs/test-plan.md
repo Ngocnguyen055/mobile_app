@@ -1,113 +1,83 @@
-# Kế hoạch kiểm thử và bằng chứng
+# Kế hoạch kiểm thử
 
-Ghi kết quả thật vào `docs/evidence/` theo mẫu: ngày/giờ, commit, máy/Android OS, mạng, bước làm, expected, actual, log/ảnh, người thực hiện. Bảng này là kịch bản, không phải tuyên bố đã qua.
+## Phân biệt phạm vi
 
-## Bổ sung cho bản dự án phân cấp
+- **Tự động trên máy phát triển:** domain policy, API route/service với mock database, SQLite in-memory, typecheck, lint và Android JavaScript export.
+- **Tích hợp Mongo thật:** các script `test:*` dùng URI trong `.env`; cần database test và quyền phù hợp.
+- **Thủ công trên thiết bị:** UI/picker/notification, lifecycle Android, hai tài khoản/two-device chat, mạng yếu và APK.
 
-Lượt triển khai 07/10/2026: **65/65 test trong 17 file**, typecheck cả source/script, lint, web build và Android JavaScript export đạt. Đầu ra thật ở [evidence/hierarchy-2026-10-07.txt](evidence/hierarchy-2026-10-07.txt). Các test API mới dùng DB mock; test nhóm dùng HTTP/Socket.IO thật với directory mock. Đây không phải bằng chứng transaction chạy trên Atlas hay DIRECT WebRTC thật. `test:hierarchy-api` và migration chưa chạy trên Atlas vì lệnh bị cơ chế duyệt tự động chặn trước thực thi do hết quota.
+Không xem unit test hoặc export là bằng chứng OAuth, notification hay build APK đã hoạt động trên thiết bị thật.
 
-| ID  | Nhóm                  | Kịch bản / kết quả cần đạt                                                                                    | Bằng chứng hiện có và bước còn lại                                                           |
-| --- | --------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| H1  | Chức năng             | Chọn độc lập / phân cấp; tạo tổng và con, có role và UUID nhóm ổn định                                        | Model/ACL test; tạo bằng API Mongo thật và UI còn cần chạy                                   |
-| H2  | Chức năng             | Director quản lý mọi con; manager chỉ quản lý con của mình; employee chỉ đọc con tham gia                     | `hierarchy-access`, `hierarchy-routes`; kiểm tra ba tài khoản trên Android                   |
-| H3  | Chức năng             | Manager chỉ thêm root members; chỉ director bổ nhiệm người quản lý                                            | Route tests; script Mongo thật đã chuẩn bị                                                   |
-| H4  | Chức năng             | Tạo / sửa / xóa task theo quyền; employee chỉ đổi status task mình                                            | `api-project-writes`, `api-task-window`; thao tác Android còn cần chạy                       |
-| H5  | Chức năng             | Tiến độ đúng phạm vi, mở task từng người, đúng bốn ký hiệu/status Quá hạn                                     | Helpers `mobile-hierarchy-policy`, `hierarchy-access`; biểu đồ/giờ thiết bị còn cần kiểm tra |
-| H6  | Chức năng             | Tác giả sửa/xóa bài và bình luận; moderator ẩn/xóa nhưng không sửa nội dung người khác                        | `discussion`; kiểm tra tải lại và nhiều tài khoản trên Android                               |
-| H7  | Chức năng             | Đăng bài kèm ảnh/tệp; tải đúng quyền; tệp cũ không mất sau bỏ tab Tài liệu                                    | HTTP multipart test với DB mock; DocumentPicker/download thật còn cần chạy                   |
-| H8  | Chức năng             | Xóa manager cần replacement; membership, task và chat cập nhật cùng nhau                                      | Route test + project chat thu hồi Socket.IO; transaction Mongo thật còn cần chạy             |
-| H9  | Chức năng             | Archive tổng kéo theo con, chỉ đọc; restore chọn giữ/khôi phục con                                            | Route/archive/chat tests; Android và Mongo thật còn cần chạy                                 |
-| H10 | Chức năng             | Inbox không actor, đúng scope bài/bình luận, deadline không trùng; đã đọc đúng user                           | `notifications`, `discussion`; deadline scanner thật và UI còn cần chạy                      |
-| C3  | Đồng thời             | Hai request sửa cùng task.version: một 200, một 409                                                           | Script `test:hierarchy-api` có hai request song song; **chưa chạy Mongo thật**               |
-| C4  | Đồng thời             | Hai request sửa cùng comment.revision: một 200, một 409                                                       | Script `test:hierarchy-api` đã chuẩn bị; **chưa chạy Mongo thật**                            |
-| C5  | Đồng thời             | Gửi tạo task / bình luận cùng lúc với archive hoặc remove: không có ghi được phép sau thao tác thu hồi commit | Test kiểm tra session/lock root+child; cần thử tải thật, lưu log thứ tự commit               |
-| E3  | Lỗi / phục hồi        | Dừng API kiểm tra nhóm: DIRECT/RELAY nhóm mới bị từ chối; khởi động lại và gửi tin mới                        | `project-chat` kiểm tra directory outage qua Socket.IO; thử process thật còn cần chạy        |
-| E4  | Lỗi / phục hồi        | Restart signaling; đăng ký lại giữ đúng UUID/membership nhóm dự án và lịch sử SQLite                          | Cần demo Android/Mongo thật; nhóm web demo RAM vẫn phải tạo lại                              |
-| S6  | Bảo mật               | Nhân viên gọi API ngoài quyền, moving personal event vào project, đọc project khác                            | `api-project-writes`, `hierarchy-access`; script Mongo thật còn cần chạy                     |
-| S7  | Dữ liệu sai / bảo mật | Tệp >512 KiB, MIME sai; tệp bài ẩn, sender/receiver nhóm đã bị loại                                           | `discussion`, `project-chat`; thử URI/file thật và client stale trên Android                 |
-| P2  | Hiệu năng             | Đo 100 tin nhóm ba peer sau thêm kiểm tra quyền; ghi RTT/ACK p50,p95, lỗi và môi trường                       | Chưa đo bản nhóm dự án mới; benchmark cũ bên dưới chỉ chứng minh đường relay localhost cũ    |
+## Ma trận ca kiểm thử
 
-Luồng demo phân cấp: An tạo tổng, thêm Bình/Chi; tạo con giao Bình quản lý, thêm Chi. Bình giao task; Chi đổi status của mình và thử sửa task người khác. Đăng bài kèm tệp, bình luận rồi dùng vai trò quản lý ẩn bài. Xem inbox cả ba tài khoản. An thử xóa Bình khi chưa có replacement, sau đó chọn Chi thay Bình; kiểm tra quyền, task bỏ phân công, Chat không nhận tin mới trên Bình và SQLite cũ vẫn còn. Archive/restore tổng, restart signaling và đối chiếu UUID nhóm. Kiểm tra drawer `☰` dọc và header cố định khi cuộn; ảnh ADB hàng tab cũ ngày 28/09 không chứng minh drawer mới.
+| ID | Loại | Tình huống | Kỳ vọng | Bằng chứng |
+| --- | --- | --- | --- | --- |
+| F1 | Chức năng | Đăng ký, đăng nhập đúng/sai mật khẩu | JWT chỉ cấp cho credential hợp lệ | `api-auth.test.ts` + API thật |
+| F2 | Chức năng | CRUD sự kiện cá nhân bằng picker | Lưu đúng start/end, sửa/xóa được, lịch Việt Nam | calendar tests + ảnh thiết bị |
+| F3 | Chức năng | Tạo task có start/end và phân công | `startsAt <= dueAt`, lịch/progress cập nhật | API/task tests + ảnh |
+| F4 | Chức năng | Reminder khi deadline đổi/hoàn thành | Hủy ID cũ, lập lại hoặc không còn notification | test policy + thiết bị |
+| F5 | Chức năng | Dự án phân cấp và ba vai trò | Giám đốc/Trưởng phòng/Nhân viên đúng ACL | hierarchy tests + 3 login |
+| F6 | Chức năng | Archive/restore tổng và dự án con | Archived chỉ đọc; cascade/restore đúng lựa chọn | hierarchy route test + API thật |
+| F7 | Chức năng | Bài, bình luận, file và moderation | Tác giả sửa mình; manager chỉ ẩn/xóa đúng phạm vi | discussion tests + UI |
+| F8 | Chức năng | Chat 1:1 khi người nhận chưa mở app | queued trong Mongo, sync sau, delivered/read | persistence tests + 2 thiết bị |
+| F9 | Chức năng | Chat nhóm khi một user offline | Fan-out theo member; user sync sau | persistence test + 3 login |
+| F10 | Chức năng | Tìm email, block và xóa hội thoại | Không tải danh bạ; block server-side; xóa một phía | direct-chat tests + UI |
+| C1 | Đồng thời | Hai manager PATCH cùng version cũ | Một request thành công, request còn lại 409 | API test + Mongo replica set |
+| C2 | Đồng thời | Outbox retry đồng thời cùng Message ID | Unique `(messageId, receiver)`, không bubble trùng | persistence test + DB query |
+| R1 | Lỗi/phục hồi | Dừng API khi gửi text, sau đó mở lại | SQLite/outbox giữ tin và tự retry | thủ công 2 thiết bị |
+| R2 | Lỗi/phục hồi | Force stop/restart app giữa lúc sync | Cursor phục hồi, upsert idempotent, không mất lịch sử | SQLite test + thiết bị |
+| S1 | Dữ liệu sai/bảo mật | Giả sender/receiver/group hoặc ID sai | JWT quyết định sender; schema/ACL từ chối | API persistence/security tests |
+| S2 | Dữ liệu sai/bảo mật | User ngoài dự án tải tệp/đọc group | 403/404, không lộ metadata/bytes | discussion/chat tests |
+| S3 | Dữ liệu sai/bảo mật | File quá 512 KiB hoặc quá 3 file | 413/400, không tạo message nửa chừng | multipart API test |
+| P1 | Hiệu năng | Sync 1.000 delivery, page/cursor | Ghi p50/p95/max và RAM thật; không đặt ngưỡng giả | script đo + file evidence |
 
-Chạy `npm.cmd run test:hierarchy-api` với database user có quyền tạo/xóa **database thử riêng** trên cluster. Script dọn database tạm nếu kết thúc bình thường hoặc lỗi trong try/finally; nếu tiến trình bị kill cứng, nhóm kiểm tra và xóa riêng database có tiền tố `student_planner_verify_`. Không dùng script để chứng minh notification Android, DIRECT thật hoặc Google OAuth.
-
-## Bộ kịch bản Mobile / DS01 ban đầu
-
-| ID  | Loại                | Bước thao tác                                                                                                                                                                                                          | Kết quả mong đợi                                                                                                                                                          | Tự động                                                                                             |
-| --- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| F1  | Chức năng           | Đăng ký An, đăng xuất, đăng nhập lại                                                                                                                                                                                   | Token hợp lệ; sau đăng nhập mở lịch tổng hợp của An mà không cần chọn dự án                                                                                               | Chưa, cần Mongo/Android                                                                             |
-| F2  | Chức năng           | An tạo dự án, thêm Bình và Chi theo email                                                                                                                                                                              | Cả ba thấy dự án; người ngoài bị 403                                                                                                                                      | Chưa, cần Mongo                                                                                     |
-| F3  | Chức năng           | Tạo task cho Bình; chọn `Bắt đầu` và `Kết thúc (deadline)` bằng hai popup native, tải lại rồi Bình đổi `doing → done`                                                                                                  | Hai mốc được lưu đúng; tiến độ Bình tăng; `dueAt` điều khiển nhắc hạn và nhắc cũ bị hủy                                                                                   | Picker và create/reload/delete đã kiểm tra Android/Mongo; status và notification còn phải thử       |
-| F4  | Chức năng           | Từ lịch sau đăng nhập, chuyển ngày/tuần/tháng; dùng đúng ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`; mở modal gần toàn màn hình để thêm/sửa, rồi xem và xóa sự kiện; chọn bắt đầu/kết thúc bằng popup ngày và spinner giờ | Form có trường `Nội dung sự kiện`; hiện `dd/MM/yyyy`, tuần `T2…CN`; picker 24 giờ trả đúng giờ Việt Nam; task và sự kiện đúng phạm vi xuất hiện; dữ liệu sau tải lại đúng | Helper có test; native picker đã build, CRUD/notification vẫn cần Android/Mongo                     |
-| F4a | Chức năng/UI        | Ở `Tất cả` và `Cá nhân`, kiểm tra chỉ có `+ Thêm sự kiện`; ở `Dự án`, kiểm tra không có nút thêm sự kiện/task và dùng `Xem / sửa` trên mục dự án. Vào tab `Lịch` của dự án và cuộn nội dung ở cả hai màn hình          | Mục dự án mở đúng dự án/tab; lịch dự án không có nút tạo; khối `Hiển thị` và thanh quay lại/tab dự án vẫn cố định khi cuộn dọc                                            | `calendar-policy.test.ts` đạt 4/4; giao diện và điều hướng đã xác nhận bằng ADB ngày 28/09/2026     |
-| F5  | Chức năng           | Kết nối Google, đồng bộ hai lần với task được giao cùng sự kiện cá nhân/dự án                                                                                                                                          | Không nhân đôi mục; các mục được upsert vào lịch chính                                                                                                                    | Chưa, cần Google credential                                                                         |
-| F6  | Chức năng           | Bật 1 tuần/1 ngày/1 giờ cho task, sửa deadline rồi hoàn thành                                                                                                                                                          | Thông báo cũ hủy, chỉ còn mốc hợp lệ; task `done` không nhắc                                                                                                              | Chưa, cần Android                                                                                   |
-| F6b | Chức năng           | Tạo sự kiện có nhắc, đổi thời gian/mốc nhắc, sau đó xóa sự kiện                                                                                                                                                        | Lịch nhắc cũ bị hủy khi sửa, chỉ lịch mới còn hiệu lực; xóa sự kiện thì không còn thông báo                                                                               | Chưa, cần Android                                                                                   |
-| F7  | Chức năng           | Ba peer online, tạo nhóm, nhắn cả nhóm                                                                                                                                                                                 | Hai recipient có ACK riêng, lưu lịch sử                                                                                                                                   | Có, `tests/peer.test.ts` qua relay                                                                  |
-| F7a | Chức năng           | A tìm email của B, mở kết quả, gửi tin 1:1 hai chiều xen kẽ một tin nhóm rồi mở lại local store                                                                                                                        | Kết quả không có A/cặp đang chặn; lịch sử A↔B chỉ có tin trực tiếp, giữ trạng thái và không lẫn fan-out nhóm; danh sách chính chỉ hiện hội thoại đã mở                    | Có, API mock; Socket.IO, SQLite thật và localStorage trong test. Tìm kiếm Mongo thật còn phải chạy  |
-| F7b | Chức năng/UI        | Trên Android, A mở `Tin nhắn`, tìm B theo email, gửi text và ảnh/tệp; mở nút `!`, quay lại, đóng/mở app và bật ép RELAY cho một tin                                                                                    | Có nút quay lại; ảnh/tệp xem lại và chỉ A/B tải được; bubble có ACK cùng nhãn DIRECT/RELAY; mở lại còn lịch sử; tab Chat dự án không bị trộn                              | Helper/API có test; giao diện mới và gửi với hai peer online còn phải thử trên Android              |
-| F7c | Chức năng/bảo mật   | A nhấn giữ hội thoại để chặn B; B thử lookup/gửi DIRECT và RELAY; A bỏ chặn rồi xóa hội thoại                                                                                                                          | Cả API, signaling, relay và peer nhận chặn tin cá nhân; chat nhóm vẫn theo ACL nhóm; bỏ chặn cho phép kết nối mới; xóa chỉ xóa SQLite của A                               | Có test API, signaling/relay và SQLite; DataChannel thật, UI nhấn giữ và đồng bộ nhiều máy cần thử  |
-| F8  | Chức năng           | Thêm/xóa bài thảo luận, upload/tải file 300 KiB, chỉnh ngân sách                                                                                                                                                       | Dữ liệu cập nhật, ACL đúng                                                                                                                                                | Chưa, cần Mongo/Android                                                                             |
-| C1  | Đồng thời           | An và Bình cùng PATCH một task với version giống nhau                                                                                                                                                                  | Một cập nhật thành công, một 409; tải lại trước khi sửa                                                                                                                   | Chưa, cần Mongo                                                                                     |
-| C2  | Đồng thời           | Hai peer cùng sửa nhóm từ version 1                                                                                                                                                                                    | Một thay đổi thành công, một bị từ chối stale version                                                                                                                     | Có, `tests/services.test.ts`                                                                        |
-| E1  | Lỗi/phục hồi        | Ép DIRECT fail, nhắn A→B                                                                                                                                                                                               | Sau timeout tự RELAY, B ACK, có relay FORWARD                                                                                                                             | Có với DataChannel giả lập; cần mạng thật                                                           |
-| E2  | Lỗi/phục hồi        | Tắt B đột ngột, gửi A→B; mở B lại                                                                                                                                                                                      | Presence chuyển offline; tin cũ failed, lịch sử cục bộ phục hồi, tin mới gửi được                                                                                         | Chưa, cần demo ba peer                                                                              |
-| S1  | Dữ liệu sai/bảo mật | Relay gửi senderId khác token; body >4000                                                                                                                                                                              | Relay từ chối, không chuyển                                                                                                                                               | Có, `tests/services.test.ts`                                                                        |
-| S2  | Dữ liệu sai/bảo mật | User ngoài dự án gọi endpoint file/task                                                                                                                                                                                | HTTP 403, không lộ dữ liệu                                                                                                                                                | Chưa, cần Mongo                                                                                     |
-| S3  | Dữ liệu sai/bảo mật | User B gọi sửa/xóa sự kiện cá nhân của User A; tạo event có kết thúc trước bắt đầu, mốc nhắc lạ hoặc `createdBy` giả                                                                                                   | Không truy cập được sự kiện A; payload sai bị HTTP 400                                                                                                                    | Có, `scripts/verify-calendar.ts` trên Atlas                                                         |
-| S4  | Dữ liệu sai/bảo mật | Gọi API tạo/sửa task với `startsAt` bằng hoặc sau `dueAt`                                                                                                                                                              | HTTP 400; task không bị tạo hoặc cập nhật; version hiện tại không đổi                                                                                                     | Có, `tests/api-task-window.test.ts` với model/API và DB mock; chưa chạy payload sai trên Mongo thật |
-| S5  | Dữ liệu sai/bảo mật | Gọi `/users/search` hoặc tải tệp không JWT; lookup trước đăng ký hoặc với Peer ID/payload sai; thử lưu ACK, tin nhóm hoặc cặp peer khác bằng `putDirect`                                                               | API trả 401/403; signaling/storage từ chối; không lộ socket ID, IP, token, password hash hoặc tệp của người khác                                                          | Có, `api-direct-chat`, `services` và `chat-storage`                                                 |
-| P1  | Hiệu năng           | Chạy 100 envelope relay tuần tự với `scripts/benchmark-relay.ts`                                                                                                                                                       | In p50/p95/max và số lượng 100; ghi cấu hình máy                                                                                                                          | Đã đo localhost; xem `evidence/benchmark.txt`                                                       |
-
-Lượt 20/10/2026 đạt 87/87 test trong 22 file. Bản hiện tại kiểm tra `api-direct-chat`, upload/download multipart và quyền tệp, metadata giao thức, cache/block/xóa SQLite cùng việc signaling/relay từ chối cặp đã chặn. DataChannel trong test fallback vẫn là lớp giả lập cố tình không mở. `npm run test:calendar-api` trước đó đã chạy với MongoDB Atlas cho lịch nhưng không chứng minh chat 1:1 mới; `test:contacts-api` và ảnh ADB ngày 05/10 chỉ là bằng chứng của giao diện danh bạ cũ. Kết quả mới ở `docs/evidence/direct-chat-search-files-block-2026-10-20.txt`; vẫn phải thử hai Android/peer online và API chat với Atlas.
-
-### Kịch bản lịch và notification trên Android
-
-1. Đăng nhập rồi xác nhận màn hình đầu tiên là **Lịch của tôi**; thanh `Hiển thị` có đúng `Tất cả`, `Cá nhân`, `Dự án`, không liệt kê tên từng dự án. Task được giao từ nhiều dự án, sự kiện cá nhân và sự kiện dự án cùng xuất hiện nhưng mục ngoài quyền không xuất hiện.
-2. Ở chế độ tháng, xác nhận hàng `T2, T3, T4, T5, T6, T7, CN`, ngày 01/09/2026 nằm dưới `T3`, ngày chọn hiển thị `dd/MM/yyyy`; kiểm tra thêm ngày/tuần và chuyển qua cuối tháng.
-3. Ở `Tất cả` và `Cá nhân`, xác nhận có `+ Thêm sự kiện` nhưng không có `+ Thêm task`. Chuyển sang `Dự án`, xác nhận cả hai nút tạo đều không xuất hiện; các card dự án chỉ có `Xem / sửa` và mở đúng dự án/tab tương ứng.
-4. Cuộn nội dung lịch đủ xa để lưới tháng đi khỏi màn hình; xác nhận khối `Lịch của tôi / Hiển thị` vẫn ở trên. Vào một dự án, cuộn danh sách task và xác nhận `← Danh sách`, tên dự án cùng hàng tab vẫn cố định.
-5. Vào tab `Lịch` của dự án; xác nhận không có nút thêm sự kiện/task. Trở lại lịch chính, dùng `Xem / sửa` trên một sự kiện dự án và xác nhận editor mở đúng sự kiện trong đúng dự án.
-6. Mở form modal từ `Tất cả` hoặc `Cá nhân`, nhập `Nội dung sự kiện`, chọn mốc nhắc và tạo sự kiện cá nhân; đóng/mở lại app rồi xác nhận dữ liệu vẫn còn. Mở lại modal để sửa nội dung, giờ và mốc nhắc; xác nhận chỉ thông báo theo cấu hình mới được phát.
-7. Xóa sự kiện trước giờ nhắc; xác nhận sự kiện biến mất sau tải lại và thông báo đã lên lịch không còn được phát. Lặp lại với một sự kiện gắn dự án.
-8. Với task, đổi deadline rồi đánh dấu `done`; xác nhận notification cũ bị hủy và task hoàn thành không tạo nhắc mới.
-
-Ngày 28/09/2026, Android emulator và ADB đã xác nhận các bước 1, 3, 4, 5 về phạm vi, nút thao tác, điều hướng và thanh cố định. Ảnh thật nằm trong `docs/evidence/`. Các bước CRUD/notification ở 6–8 vẫn cần chạy riêng; các ảnh này không chứng minh notification đã phát hoặc bị hủy.
-
-### Kịch bản hai mốc thời gian của task trên Android
-
-1. Vào `Dự án` → chọn một dự án → `Task`; xác nhận form có hai trường `Bắt đầu` và `Kết thúc (deadline)`, không còn ô nhập deadline dạng văn bản.
-2. Chạm `Bắt đầu`, chọn ngày và giờ trên popup native; lặp lại với `Kết thúc (deadline)`. Tạo task, tải lại dự án và xác nhận cả hai mốc vẫn đúng theo định dạng Việt Nam.
-3. Mở `Sửa` trên task vừa tạo; đổi cả hai mốc bằng popup, lưu và tải lại. Kiểm tra lịch dùng mốc kết thúc để đặt task vào ngày deadline, còn phần chi tiết hiển thị khoảng bắt đầu đến kết thúc.
-4. Thử chọn thời gian kết thúc bằng hoặc trước thời gian bắt đầu. App/API phải báo lỗi và không lưu thay đổi.
-5. Mở một task cũ không có `startsAt`; xác nhận app vẫn đọc được, cho phép chọn bổ sung mốc bắt đầu rồi lưu. Kiểm tra nhắc hạn, sắp quá hạn và quá hạn vẫn dựa trên `dueAt`.
-
-Ngày 28/09/2026, development build trên Android emulator đã xác nhận hai trường, popup ngày/giờ 24 giờ cho cả hai trường và luồng tạo → tải lại dự án → hiển thị hai mốc → xóa task tạm với MongoDB đã cấu hình. Ảnh thật nằm trong `docs/evidence/`. Các bước sửa task, thử khoảng thời gian đảo trên Mongo thật và notification vẫn cần nhóm thực hiện theo kịch bản trên.
-
-Để nhận kết quả nhanh, có thể đặt sự kiện cách hiện tại hơn 1 giờ một vài phút và chọn mốc 1 giờ. Ghi giờ thiết bị, quyền notification, thời gian sửa/xóa và kết quả thực tế vào `docs/evidence/`; không dùng ảnh hoặc log giả.
-
-### Ma trận thiết bị/mạng cần nhóm chạy
-
-1. Ba web peer trên cùng máy để kiểm tra giao diện, DIRECT trình duyệt, relay ép bằng checkbox, nhóm, log.
-2. Một Android development build để kiểm tra lịch tổng hợp, định dạng Việt Nam, modal tạo/sửa sự kiện, CRUD, chat 1:1 offline và cập nhật/hủy notification; sau đó dùng hai Android development build và một web peer trên cùng Wi-Fi để xác nhận chat 1:1 hai chiều, `react-native-webrtc`, DataChannel, ACK, nhãn đường truyền và SQLite sau restart.
-3. Ba peer trên ít nhất hai mạng (ví dụ hai Wi-Fi khác nhau/4G), signaling và relay qua HTTPS/WSS công khai; thử DIRECT trước, nếu NAT chặn thì RELAY.
-4. Ngắt process relay trong lúc DIRECT đang chạy rồi mất DIRECT: khi cả hai đường đều mất, tin phải failed; khởi động relay lại rồi gửi tin mới.
-5. Thử Google OAuth bằng credential của nhóm trên Android có Play Services và tài khoản thử nghiệm; chụp trước/sau Google Calendar, xác nhận sync lần hai không trùng.
-
-### Các lệnh kiểm tra
+## Lệnh tự động
 
 ```powershell
-npm run typecheck
-npm run lint
-npm test
-npm test -- tests/calendar-policy.test.ts --silent
-npm run test:calendar-api
-npm run test:contacts-api
-npm run build -w @ds01/web-peer
-Push-Location src/mobile
-npx expo install --check
-Pop-Location
-npx tsx scripts/benchmark-relay.ts
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run export -w @student-planner/mobile
 ```
 
-Kiểm tra API F1–F4, F8, C1, S2, S3 cần MongoDB chạy. F4/F6/F6b cần Android để xác nhận notification thật; F5 cần credential Google của nhóm. Nếu môi trường chưa đáp ứng thì ghi `not run`, không thay bằng dữ liệu giả.
+Tích hợp Mongo thật:
+
+```powershell
+npm.cmd run test:calendar-api
+npm.cmd run test:contacts-api
+npm.cmd run test:hierarchy-api
+```
+
+Luôn ghi ngày, commit, Node/JDK/Android version, database dùng local hay Atlas và toàn bộ output. Không chép số test cũ nếu vừa xóa/thêm test.
+
+## Kiểm tra chat thủ công hai thiết bị
+
+1. Dùng hai emulator hoặc một emulator + điện thoại, mỗi máy một tài khoản.
+2. Người nhận đóng app; người gửi gửi text/tệp và chụp trạng thái queued.
+3. Mở người nhận, đợi polling, chụp message và trạng thái phía gửi.
+4. Tắt API, gửi text, kiểm tra outbox; mở API và kiểm tra retry.
+5. Gửi lại cùng Message ID bằng công cụ HTTP ở môi trường test, đếm record Mongo.
+6. Block, giả JWT/user target, thử file quá giới hạn và user ngoài group.
+7. Tạo nhóm ba user, loại một user rồi gửi tin mới; xác nhận user bị loại không sync được.
+
+## Phép đo hiệu năng
+
+Repository hiện chưa có script benchmark sau khi tách mã DS01. Khi nhóm bổ sung, phép đo nên:
+
+- tạo database test riêng;
+- seed tối thiểu 1.000 delivery cho một user;
+- gọi sync theo page như Mobile thực tế;
+- đo từ client bằng `performance.now()` sau một lượt warm-up;
+- báo p50/p95/max, page size, số record, cấu hình máy và Atlas/local;
+- dọn đúng dữ liệu test ở cuối.
+
+Không đưa con số vào báo cáo trước khi script được chạy và output được lưu trong `docs/evidence/`.
+
+## Tiêu chí trước khi demo
+
+- Typecheck/lint/test/export đều xanh ở commit demo.
+- API `/health` và đăng nhập Atlas/local thành công.
+- Có ít nhất một lần build/cài Android thành công sau khi gỡ các native dependency cũ.
+- Hai thiết bị chứng minh chat offline, block và attachment.
+- Ba tài khoản chứng minh ACL và thay đổi membership nhóm.
+- Ảnh/log có timestamp, không dùng ảnh giả hoặc kết quả từ kiến trúc DS01 cũ để chứng minh Mobile hiện tại.

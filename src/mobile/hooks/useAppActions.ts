@@ -5,7 +5,6 @@ import { clearAllReminders } from "../services/local.ts";
 import type { MainView, ProjectTab } from "../types/index.ts";
 import type { useCalendarEvents } from "./useCalendarEvents.ts";
 import type { useChat } from "./useChat.ts";
-import type { useGoogleSync } from "./useGoogleSync.ts";
 import type { useProjectWorkspace } from "./useProjectWorkspace.ts";
 import type { useProjects } from "./useProjects.ts";
 import type { useReminders } from "./useReminders.ts";
@@ -18,7 +17,6 @@ type Options = {
   reminderController: ReturnType<typeof useReminders>;
   tasksController: ReturnType<typeof useTasks>;
   chatController: ReturnType<typeof useChat>;
-  googleController: ReturnType<typeof useGoogleSync>;
   clearAuth: () => Promise<void>;
   setError: (message: string) => void;
   setMainView: Dispatch<SetStateAction<MainView>>;
@@ -33,7 +31,6 @@ export function useAppActions({
   reminderController,
   tasksController,
   chatController,
-  googleController,
   clearAuth,
   setError,
   setMainView,
@@ -69,7 +66,6 @@ export function useAppActions({
   const logout = async () => {
     chatController.resetChatState();
     workspaceController.resetProjectWorkspace();
-    await googleController.disconnectGoogle();
     try {
       await clearAllReminders();
     } catch {

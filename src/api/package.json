@@ -1,5 +1,5 @@
 {
-  "name": "@ds01/api",
+  "name": "@student-planner/api",
   "version": "1.0.0",
   "private": true,
   "type": "module",

@@ -31,12 +31,12 @@ for (const name of names) {
   users.push(user);
 }
 let project = await Project.findOne({
-  name: "Bài tập lớn Mobile + DS01",
   owner: users[0].id,
+  name: { $in: ["Bài tập lớn Mobile", "Bài tập lớn Mobile + DS01"] },
 });
 if (!project)
   project = await Project.create({
-    name: "Bài tập lớn Mobile + DS01",
+    name: "Bài tập lớn Mobile",
     description: "Dữ liệu mẫu cho ba sinh viên",
     owner: users[0].id,
     kind: "independent",
@@ -46,6 +46,10 @@ if (!project)
     plannedBudget: 500000,
     spentBudget: 75000,
   });
+else if (project.name !== "Bài tập lớn Mobile") {
+  project.name = "Bài tập lớn Mobile";
+  await project.save();
+}
 if (project.kind === "independent") {
   for (const userId of project.members.map(String)) {
     await ProjectMember.updateOne(
@@ -62,7 +66,7 @@ if (!(await Task.exists({ project: project.id }))) {
   await Task.create([
     {
       project: project.id,
-      title: "Thiết kế giao thức chat",
+      title: "Thiết kế luồng quản lý công việc",
       assignee: users[0].id,
       startsAt: new Date(now + 2 * 3600000),
       dueAt: new Date(now + 86400000),
@@ -78,7 +82,7 @@ if (!(await Task.exists({ project: project.id }))) {
     },
     {
       project: project.id,
-      title: "Kiểm thử ba peer",
+      title: "Kiểm thử phân quyền dự án",
       assignee: users[2].id,
       startsAt: new Date(now + 4 * 86400000),
       dueAt: new Date(now + 7 * 86400000),

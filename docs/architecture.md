@@ -1,116 +1,103 @@
-# Kiến trúc và các giai đoạn
+# Kiến trúc Student Planner
+
+## Tổng quan
 
 ```mermaid
 flowchart LR
-  Android[Android Expo dev build\nSQLite + notifications] --> API[Express API]
-  Android --> Signal[Signaling process\nSocket.IO :4001]
-  Android --> Relay[Relay process\nSocket.IO :4002]
-  Web[Web peer\nlocalStorage] --> Signal
-  Web --> Relay
-  Android <-->|WebRTC DataChannel DIRECT| Web
+  Mobile[Android\nReact Native + Expo] -->|HTTPS REST + JWT| API[Express API]
   API --> Mongo[(MongoDB)]
-  Signal -->|membership và archive, không chat body| API
-  Relay -->|kiểm tra thành viên nhóm| Signal
-  Android -->|Google Calendar API\nsau OAuth native| Google[Google]
+  Mobile --> SQLite[(SQLite trên thiết bị)]
+  Mobile --> Notify[Android notifications]
 ```
 
-Signaling chỉ chuyển `request`, `offer`, `answer`, `ice`, đăng ký, presence và dữ liệu nhóm/quyền; không nhận chat envelope. Relay chuyển envelope khi mode `RELAY` và ghi `FORWARD messageId`. API xử lý dữ liệu Mobile và cung cấp membership/archive cho signaling, không nhận hoặc lưu chat body. Android dùng user Mongo `_id` làm Peer ID; web demo dùng ID tự đặt và secret lưu trình duyệt. JWT của API chứng thực Android ở signaling; token ngắn hạn do signaling cấp chứng thực kết nối relay.
+Hệ thống chỉ có hai tiến trình ứng dụng: Mobile và API. MongoDB giữ dữ liệu dùng chung; SQLite giữ dữ liệu cần mở lại nhanh hoặc cần xếp hàng khi mất mạng. Không có signaling, relay Socket.IO, WebRTC hay server presence trong repository này.
 
-## Kiến trúc mã DS01
+## Ranh giới module
+
+### `src/mobile`
+
+- `screens/`: màn hình cấp cao và điều hướng theo state.
+- `components/`: UI lịch, task, dự án, thảo luận và chat.
+- `hooks/`: điều phối state và luồng nghiệp vụ của màn hình.
+- `services/api.ts`: mọi request HTTP, token và chuyển đổi response.
+- `services/local.ts`: SQLite, outbox chat, cursor đồng bộ và reminder.
+- `domain/`: kiểu và chính sách thuần, có thể test không cần React Native.
+- `types/`: kiểu dữ liệu API dùng chung trong Mobile.
+
+UI không truy cập MongoDB. API service không điều khiển component. Chính sách quyền hiển thị trong Mobile chỉ phục vụ trải nghiệm; API luôn kiểm tra lại quyền.
+
+### `src/api`
+
+- `index.ts`: composition root, auth, task/event/project routes và khởi động server.
+- `models.ts`: schema/index Mongoose.
+- `projectAccess.ts`: vai trò và quyền dự án.
+- `projectRoutes.ts`: membership, phân cấp, archive, tiến độ và nguồn lực.
+- `discussionRoutes.ts`: bài, bình luận và attachment thảo luận.
+- `chatPersistenceRoutes.ts`: endpoint store-and-forward, sync, read và attachment chat.
+- `chatPersistenceService.ts`: kiểm tra message, fan-out nhóm, cursor và delivery state.
+- `directChatRoutes.ts` / `directChatService.ts`: tìm user, block và ẩn hội thoại.
+- `notifications.ts`: hộp thư thông báo dự án/task/thảo luận.
+
+## Dữ liệu chính
+
+- `users`: tài khoản và password hash.
+- `projects`: dự án tổng/con, owner/manager, membership cache, archive, version, nguồn lực.
+- `project_members`: vai trò theo từng dự án; user không có vai trò toàn cục.
+- `tasks`, `events`: công việc và lịch.
+- `discussions`, `comments`, `documents`: nội dung lâu dài và tệp nhỏ.
+- `notifications`: hộp thư trong ứng dụng.
+- `chat_messages`: một record delivery cho mỗi người nhận.
+- `chat_attachments`: metadata và bytes tệp nhỏ.
+- `user_blocks`: quan hệ chặn có hướng.
+
+Các thao tác thay đổi membership/manager/task liên quan dùng MongoDB transaction, vì vậy Mongo local cần replica set.
+
+## Chat offline
 
 ```mermaid
-flowchart TD
-  WebMain[web-peer/main.tsx\nbootstrap] --> WebApp[App.tsx\nrender]
-  WebApp --> WebHook[useWebPeer.ts\nUI state + lifecycle]
-  WebHook --> Peer[shared/peer.ts\npeer facade]
-  Peer --> Direct[directTransport.ts\nICE + WebRTC DataChannel]
-  Peer --> Delivery[messageDelivery.ts\nID + order + ACK/retry/dedupe]
-  Delivery --> Store[ChatStore boundary\nlocalStorage / SQLite]
-  Peer --> Protocol[protocol.ts\nZod envelope schemas]
-  SignalIndex[signaling/index.ts\ncomposition root] --> PeerHandlers[peerHandlers.ts\nregister + heartbeat + discovery]
-  SignalIndex --> GroupHandlers[groupHandlers.ts\ngroup membership + version]
-  SignalIndex --> WebRtcHandlers[webrtcHandlers.ts\nSDP/ICE forwarding only]
-  SignalIndex --> Maintenance[maintenance.ts\ntimeout + project sync]
-  Relay[relay/index.ts\nvalidate + route + log]
+sequenceDiagram
+  participant A as Mobile A
+  participant S as REST API
+  participant D as MongoDB
+  participant B as Mobile B
+  A->>A: lưu SQLite + outbox
+  A->>S: POST message
+  S->>D: upsert theo messageId + receiver
+  S-->>A: queued
+  B->>S: GET sync(cursor)
+  S->>D: đọc delivery của B
+  S-->>B: message + nextCursor
+  B->>B: upsert SQLite
+  B->>S: POST read
+  A->>S: GET sync(cursor)
+  S-->>A: trạng thái delivered/read mới
 ```
 
-- `shared/peer.ts` là facade mà Android và web cùng gọi. File này ghép socket signaling, socket relay, transport trực tiếp và bộ giao tin; chi tiết ICE hoặc retry không nằm trong UI.
-- `shared/directTransport.ts` chỉ quản lý `RTCPeerConnection`, SDP/ICE, DataChannel và timeout chọn DIRECT. Module này không biết SQLite, nhóm hay ACK.
-- `shared/messageDelivery.ts` tạo Message ID/Session ID/sequence, chờ ACK, retry tối đa, chống trùng và multi-unicast nhóm. Nó chỉ gọi transport qua callback nên không phụ thuộc Socket.IO hay React Native.
-- `shared/peerTypes.ts` định nghĩa hợp đồng `ChatStore`, cấu hình và event. Web dùng localStorage, Android dùng SQLite nhưng lõi giao tin không cần biết cách lưu cụ thể.
-- `signaling/index.ts` chỉ dựng dependency và HTTP/Socket.IO server. Handler peer, nhóm và WebRTC được tách theo loại sự kiện; job nền nằm trong `maintenance.ts`.
-- `web-peer/main.tsx` chỉ mount React. `useWebPeer.ts` giữ lifecycle của `PeerClient`; `App.tsx` chỉ render trạng thái và thao tác demo.
-- `relay/index.ts` còn nhỏ và có một nhiệm vụ: xác thực token, kiểm tra envelope/quyền, ánh xạ Peer ID sang socket đích, chuyển tiếp và ghi log. Vì vậy chưa cần tách thêm lớp.
+Message ID làm khóa chống lặp khi outbox retry. Chat nhóm fan-out một delivery cho từng thành viên hiện hành. Khi user bị loại khỏi dự án, API không trả tin nhóm mới cho họ; lịch sử SQLite cũ vẫn còn trên thiết bị. Polling chạy khi app mở, hiện chưa có push/background sync bảo đảm.
 
-Chiều phụ thuộc đi từ UI/service entrypoint vào `PeerClient`, rồi xuống transport, delivery, protocol và store interface. `shared` không import mobile hoặc web; signaling không import giao diện; relay không gọi vào code UI. Ranh giới này cho phép thay localStorage bằng SQLite và thay WebRTC implementation trình duyệt bằng `react-native-webrtc` mà giữ nguyên quy tắc giao tin.
+## Lịch và nhắc việc
 
-## Kiến trúc mã mobile
+Task và event nằm trong MongoDB. Mobile tổng hợp chúng thành lịch ngày/tuần/tháng. Lịch nhắc được tạo bằng `expo-notifications` và ID notification lưu SQLite; khi deadline đổi hoặc mục hoàn thành/xóa, reminder cũ được hủy rồi lập lại.
 
-`src/mobile/App.tsx` là composition root mỏng: khởi tạo các controller hook, nối dependency giữa chúng và truyền kết quả vào `screens/AppRouter.tsx`. Màn hình không gọi vòng ngược về `App`; chúng nhận state và callback qua props rồi ghép các component theo miền.
+Google Calendar không còn là integration runtime. Nếu phát triển lại, OAuth credential phải nằm ngoài repository và cần định nghĩa rõ chiều đồng bộ, khóa chống trùng, xóa và giải quyết xung đột.
 
-```mermaid
-flowchart TD
-  Entry[index.ts] --> App[App.tsx\ncomposition root]
-  App --> Hooks[hooks/\nstate + business workflows]
-  App --> Router[screens/AppRouter.tsx]
-  Router --> Screens[screens/\nfeature screens]
-  Screens --> Components[components/\ncalendar, chat, discussion, projects, tasks, ui]
-  Hooks --> Services[services/\nAPI, SQLite, Google]
-  Hooks --> Domain[domain/\npure business policies]
-  Hooks --> Utils[utils/\npure helpers]
-  Screens --> Styles[styles/\nStyleSheet theo miền]
-  Components --> Styles
-  Hooks --> Types[types/\nshared mobile types]
-  Screens --> Types
-  Components --> Types
-```
+## Bảo mật
 
-- `hooks/` giữ state và các workflow như xác thực, dự án, task, lịch, chat, nhắc việc và Google Sync.
-- `screens/` chịu trách nhiệm bố cục cấp màn hình; `components/` chứa các khối UI nhỏ hơn và có thể dùng lại.
-- `services/` là ranh giới I/O. `domain/` và `utils/` ưu tiên hàm thuần để có thể kiểm thử mà không cần React Native.
-- Mọi `StyleSheet.create(...)` nằm trong `styles/`; component chỉ import style cần dùng.
-- Chưa có `context/` vì state hiện được kết hợp một lần ở `App.tsx` rồi truyền qua router. Chỉ nên thêm Context khi nhiều nhánh component sâu thật sự cần cùng state; không tạo provider rỗng chỉ để đủ cấu trúc.
+- JWT xác định user; client không được tự khai sender của message.
+- Password lưu bằng bcrypt hash.
+- Zod giới hạn trường, kiểu và độ dài payload.
+- API kiểm tra membership/role trước mọi dữ liệu dự án, chat nhóm và tệp.
+- Attachment tối đa 512 KiB/tệp, tối đa 3 tệp/lần; quyền tải được kiểm tra lại.
+- Block được kiểm tra server-side, không chỉ khóa nút ở Mobile.
+- `MONGO_URL` và `JWT_SECRET` chỉ ở server `.env`, không dùng tiền tố Expo public.
 
-Khi thêm chức năng mới, đặt API/storage vào `services`, quy tắc thuần vào `domain` hoặc `utils`, workflow có state vào `hooks`, và giao diện vào `screens`/`components`. Chiều phụ thuộc nên đi từ giao diện và hook xuống các lớp này, không để service import component hoặc screen.
+## Chạy local và Internet
 
-### Vì sao chọn DataChannel + relay ứng dụng
+Local dùng API `:4000`, MongoDB `:27017` và Metro `:8081`. Emulator truy cập host qua `10.0.2.2`. Khi hai thiết bị không cùng mạng, đưa API ra HTTPS bằng reverse proxy/tunnel rồi build app với `EXPO_PUBLIC_API_URL` tương ứng. Caddy mẫu chỉ expose API; MongoDB không nên mở trực tiếp ra Internet.
 
-Hai máy có NAT thường không thấy địa chỉ riêng của nhau. ICE dùng STUN để tìm địa chỉ ứng viên; nếu cặp ứng viên hoạt động, DataChannel gửi trực tiếp qua kết nối WebRTC được mã hóa. Một số NAT/firewall không cho kết nối trực tiếp. TURN là relay ở tầng WebRTC/ICE, có thể giúp ICE nối được nhưng cần máy chủ TURN và băng thông riêng. Dự án **không triển khai TURN**. Khi DataChannel không mở trong 5 giây hoặc bị mất, client đổi sang relay Socket.IO do nhóm viết. Relay này đọc envelope ở tầng ứng dụng và khác TURN. Tham khảo [MDN WebRTC protocols](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols) và [DataChannel](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Using_data_channels).
+## Giới hạn kiến trúc
 
-### Các giai đoạn và tiêu chí
-
-1. **Mốc native sớm:** cấu hình Expo development build + `react-native-webrtc`, build APK trên máy có Android SDK, hai peer cùng Wi-Fi mở DataChannel và lưu log DIRECT. Repo có cấu hình, nhưng mốc thiết bị thật chưa thể xác nhận trong môi trường này.
-2. **Nền tảng DS01:** hai process độc lập, schema, discovery/heartbeat, relay auth/routing, nhóm, ACK/retry/dedupe; test tự động chạy qua.
-3. **Mobile:** API Mongo, màn hình đăng nhập, lịch tổng hợp, dự án/task/thảo luận/tài liệu/ngân sách, SQLite và nhắc deadline/sự kiện. Sau đăng nhập app mở lịch tổng hợp; các phép tính lịch Việt Nam có test thuần, còn luồng notification cần kiểm tra lại trên Android.
-4. **Tích hợp:** Android/web dùng PeerClient chung, nhóm dự án ánh xạ `chatGroupId`; cần thử ba peer thật, mất kết nối và restart.
-5. **Kiểm chứng:** lint/typecheck/test/web build và demo 2 mạng/Google OAuth; phần máy phát triển đã chạy, các ca còn lại ghi ở `test-plan.md`.
-
-### Dữ liệu và giới hạn
-
-`Project.members` là ACL cho REST API. `Task.version` dùng compare-and-swap khi cập nhật đồng thời, trả 409 để người dùng tải lại. Task mới có `startsAt` và `dueAt`, trong đó `dueAt` là thời điểm kết thúc/deadline dùng cho nhắc hạn và phân loại sắp quá hạn/quá hạn. API kiểm tra `startsAt < dueAt` khi có đủ hai mốc. `startsAt` là tùy chọn ở tầng dữ liệu để vẫn đọc được task cũ chỉ có `dueAt`; form Android tạo/sửa task yêu cầu hai mốc và mở popup native chọn ngày rồi giờ cho từng trường. `Event.project = null` biểu diễn sự kiện cá nhân; nếu có `project` thì đó là sự kiện dự án. Mỗi sự kiện lưu `createdBy`, tiêu đề, thời gian, ghi chú, trạng thái cả ngày và các mốc nhắc hợp lệ 1 tuần/1 ngày/1 giờ.
-
-Chat cá nhân có service riêng, dùng lại PeerClient của Group Chat. `GET /users/search?email=` chỉ chạy khi người dùng chủ động tìm; danh sách hội thoại được dựng từ lịch sử và cache SQLite, không tải danh bạ dự án. `peer:lookup` query một Peer ID trên signaling. Tin cá nhân có `groupId` null/undefined, gửi qua `sendDirect`/`sendDirectAttachment` và dùng DIRECT/RELAY/ACK giống nhóm. Bytes của tệp nhỏ lưu trong `chat_attachments` ở MongoDB; envelope P2P chỉ mang metadata. `user_blocks` là trạng thái chặn dùng chung, được API nội bộ, signaling, relay và peer nhận kiểm tra. SQLite bổ sung `group_id`, cache contact/block và query/xóa đúng cặp A/B. Xem [direct-chat.md](direct-chat.md).
-
-`GET /calendar` trả một feed gồm task có deadline được phân công cho người hiện tại từ mọi dự án họ tham gia, sự kiện cá nhân của họ và sự kiện từ các dự án mà họ là thành viên. Tham số `from`/`to` tùy chọn giới hạn khoảng thời gian. Các lệnh ghi `POST /events`, `PATCH /events/:eventId`, `DELETE /events/:eventId` xử lý cả sự kiện cá nhân và dự án; JWT quyết định người dùng, nên client không được tự đặt `createdBy`. Sự kiện dự án còn được kiểm tra theo `Project.members`.
-
-Android mở lịch tổng hợp ngay sau đăng nhập và vẫn cung cấp lịch riêng trong từng dự án. Các helper lịch dùng `Asia/Ho_Chi_Minh`, hiển thị `dd/MM/yyyy`, căn tuần từ thứ Hai và sinh hàng tiêu đề `T2` đến `CN`. SQLite giữ ID thông báo cục bộ cho task và sự kiện. Khi deadline, thời gian sự kiện, trạng thái hoặc mốc nhắc thay đổi, app đối chiếu chữ ký dữ liệu, hủy thông báo cũ và tạo lại; khi mục bị xóa, app hủy các ID còn lưu. Đây là nhắc cục bộ, không phải push từ server.
-
-Lịch tổng hợp có ba phạm vi cố định: `all` (`Tất cả`), `personal` (`Cá nhân`) và `projects` (`Dự án`). `projects` lọc mọi mục có tham chiếu dự án, không sinh một bộ lọc riêng cho từng dự án. Chính sách thao tác cho phép tạo sự kiện ở `all` và `personal`, không cho tạo task ở lịch tổng hợp, đồng thời tắt cả hai thao tác tạo ở `projects` và ở lịch có `fixedProjectId`. Card gắn dự án chỉ điều hướng bằng `Xem / sửa` tới màn hình dự án và tab tương ứng; lịch trong dự án không phải điểm tạo mới. Các quy tắc này nằm trong `src/mobile/domain/calendarPolicy.ts` để có thể kiểm thử độc lập với React Native.
-
-Header `Hiển thị` của lịch chính và header ngữ cảnh của dự án được render ngoài `ScrollView` nội dung. Thanh dự án giữ nút quay lại, tên dự án, mục đang mở và nút `☰`; bấm nút mở Navigation Drawer dọc. Các tác vụ không còn nằm trên hàng tab ngang. Tab Tài liệu được bỏ; tải tệp mới qua bài Thảo luận và vẫn xem được tệp cũ.
-
-Đồng bộ Google là một chiều từ feed lịch hiện tại: task chưa hoàn thành được giao cho người dùng cùng sự kiện cá nhân/dự án được upsert vào lịch chính bằng khóa ổn định. Mã tránh tạo trùng khi đồng bộ lại nhưng không tự xóa mục cũ trên Google. OAuth và đồng bộ với tài khoản thật vẫn chưa được kiểm thử khi chưa có credential của nhóm.
-
-Nguồn lực/chi phí lưu số liệu tổng, không có thanh toán. Tài liệu lưu `Buffer` trong Mongo, Multer giới hạn 512 KiB/tệp, tối đa 3 tệp/bài và kiểm tra quyền cả dự án lẫn bài bị ẩn. SQLite lưu tin theo scope Peer ID; lúc khởi động app tải lại lịch sử. Nhóm demo signaling vẫn giữ RAM; nhóm dự án có UUID và membership lưu Mongo nên restart signaling đọc lại đúng nhóm. Relay kiểm tra ACL nhóm qua endpoint nội bộ signaling với shared secret; nhóm không giao offline.
-
-### Phân cấp và transaction
-
-`Project.kind` phân biệt độc lập/phân cấp; `parentProject` biểu diễn tổng → con, chưa có tầng cháu. `project_members` lưu vai trò theo từng dự án. `projectAccess.ts` kiểm tra membership cả tổng và con, tính quyền theo role và trạng thái lưu trữ hiệu lực. Giám đốc truy cập tất cả con; tổng quan của người khác chỉ gộp con được phép xem. `effectiveStatus = overdue` là giá trị tính từ deadline, không thay trạng thái nghiệp vụ đã lưu.
-
-Các phép đổi member/manager/archive và ghi task/bài/bình luận/lịch dự án dùng Mongo transaction. Ghi version của tổng và con trong transaction làm các thao tác ghi xung đột với lưu trữ hoặc loại thành viên; callback kiểm tra lại quyền trong mỗi retry. Task dùng version, bài/bình luận dùng revision để trả 409 khi sửa trên bản cũ. Xóa thành viên bỏ / chuyển phân công và thay quản lý trong cùng commit. MongoDB phải là replica set; Compose local cấu hình `rs0`, Atlas giữ URI hiện tại.
-
-`comments` lưu bình luận; `notifications` lưu hộp thư theo user/project, không có push server. Người tạo hành động được loại khỏi danh sách nhận. Deadline scanner tạo inbox theo task + dueAt để chống trùng. Nhắc Android 1 tuần / 1 ngày / 1 giờ vẫn là lịch cục bộ, có cơ chế hủy/cập nhật riêng. Chi tiết vai trò, endpoint và migration nằm trong [hierarchical-projects.md](hierarchical-projects.md).
-
-### Triển khai
-
-Local: MongoDB replica set trên `127.0.0.1:27017`, API 4000, signaling 4001, relay 4002, web Vite 5173. Internet: đặt bốn hostname HTTPS trong Caddyfile mẫu, chạy mỗi dịch vụ bằng lệnh riêng hoặc supervisor; build web bằng `npm run build -w @ds01/web-peer` rồi sửa đường dẫn `root` trong Caddyfile. Đặt `JWT_SECRET`, `PEER_SECRET` mạnh, khác nhau và tối thiểu 32 ký tự; process production sẽ từ chối secret thiếu/ngắn. Đặt `API_INTERNAL_URL` và `SIGNAL_INTERNAL_URL` nội bộ; Caddy mẫu chặn `/internal/*` từ bên ngoài. MongoDB chỉ nghe loopback/private network. Trên Android điền URL HTTPS trước khi chạy Metro/build. Có thể dùng Quick Tunnel không tài khoản để thử nghiệm ngắn hạn; mỗi process cần một URL tunnel và cần cập nhật `.env` sau khi tunnel cấp URL. Quick Tunnel đưa cả cổng ra ngoài, nên nhóm cần chặn các route nội bộ qua proxy khi triển khai. [Cloudflare nói Quick Tunnel chỉ dành cho thử nghiệm, không có SLA](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
+- Polling 3 giây phù hợp bài tập, không tối ưu pin/băng thông cho sản phẩm lớn.
+- Attachment bytes trong MongoDB chỉ phù hợp tệp nhỏ.
+- Không có E2EE; server đọc được nội dung.
+- `newArchEnabled` hiện tắt để giữ build ổn định; cần đánh giá lại khi nâng Expo/React Native.

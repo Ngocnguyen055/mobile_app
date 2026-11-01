@@ -1,24 +1,57 @@
-# Phân công nhóm ba người
+# Phân công nhóm ba người và dàn ý báo cáo
 
-| Thành viên                | Trách nhiệm chính                                      | Phần giao và kiểm chứng chéo                                  |
-| ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
-| Sinh viên 1 (trưởng nhóm) | Giao thức chung, signaling, relay, tích hợp PeerClient | Review Android chat, test DIRECT và log hai mạng              |
-| Sinh viên 2               | Android Expo, SQLite, notification, Google Calendar    | Test API, demo task/lịch, bằng chứng OAuth thật               |
-| Sinh viên 3               | REST API MongoDB, web peer, deploy/docs/test           | Test ACL, đồng thời/version, benchmark và tài liệu triển khai |
+## Phân công đề xuất
 
-Tất cả thành viên cùng chạy demo ba peer, ghi log thật và review PR của người khác. Điền tên/MSSV thật trước khi nộp.
+| Thành viên | Phụ trách chính | Đầu ra cần bàn giao |
+| --- | --- | --- |
+| Thành viên 1 | Mobile lịch/task/reminder, UI và build Android | màn hình, picker, notification, APK/dev build, ảnh thiết bị |
+| Thành viên 2 | API/MongoDB, auth, dự án phân cấp và phân quyền | schema, route/service, migration, log tích hợp Atlas/local |
+| Thành viên 3 | Chat offline, thảo luận/file, test và tài liệu | SQLite/outbox/sync, multipart, test plan, demo/evidence |
 
-Với dự án phân cấp: sinh viên 1 kiểm tra tự đồng bộ/thu hồi nhóm và restart signaling; sinh viên 2 kiểm tra drawer, các màn hình theo vai trò, bình luận/tệp/inbox trên Android; sinh viên 3 chạy migration trên DB thử nghiệm, transaction/conflict và API bằng `test:hierarchy-api`. Đối chiếu quyền bằng ba tài khoản trước khi đưa vào báo cáo.
+Cả ba cùng review code và chạy kịch bản tích hợp. Người phụ trách không phải người duy nhất hiểu module: mỗi phần cần ít nhất một reviewer và một hướng dẫn chạy lại.
 
-## Dàn ý báo cáo DS01
+## Checklist phối hợp
 
-1. Bài toán, yêu cầu và phạm vi; phân biệt app Mobile với peer demo web.
-2. Kiến trúc hệ thống và sơ đồ deployment: API/Mongo, signaling, relay, Android/web.
-3. Thiết kế Peer ID, đăng ký, heartbeat, discovery, session, nhóm/version và offline.
-4. NAT, ICE, STUN, TURN, lựa chọn WebRTC DataChannel và relay tầng ứng dụng; giới hạn khi không có TURN.
-5. Envelope, Message ID, ACK ứng dụng, timeout/retry, dedupe, thứ tự, trạng thái per recipient, SQLite.
-6. Luồng DIRECT và bằng chứng không qua relay; luồng RELAY và log `FORWARD` đối chiếu ID.
-7. Xử lý lỗi: peer tắt, relay mất, restart, mất direct, xung đột nhóm.
-8. Kiểm thử: môi trường, ca chức năng, đồng thời, bảo mật, hiệu năng; chỉ điền số đo/ảnh/log đã lấy.
-9. Đánh giá giới hạn: nhóm web demo/RAM so với nhóm dự án/Mongo, hai tầng phân cấp, phụ thuộc dịch vụ kiểm tra quyền cho chat nhóm, không giao offline, không TURN, OAuth phụ thuộc cấu hình ngoài, quyền truy cập web demo.
-10. Phân công, bài học và hướng phát triển.
+- Thống nhất `.env.example`, không gửi secret qua Git.
+- Mỗi pull request ghi schema/API/UI bị ảnh hưởng và migration nếu có.
+- Không đổi trực tiếp database production để “sửa nhanh”.
+- Sau thay dependency native, báo nhóm build lại development client.
+- Trước demo, khóa commit/tag và chạy lại toàn bộ lệnh kiểm tra trên chính commit đó.
+- Bằng chứng ghi rõ ai chạy, ngày giờ, thiết bị, database và mạng.
+
+## Dàn ý báo cáo Mobile
+
+1. Bài toán và người dùng mục tiêu.
+2. Yêu cầu chức năng và phi chức năng.
+3. Công nghệ và lý do chọn React Native/Expo development build, Express, MongoDB, SQLite.
+4. Kiến trúc Mobile → REST API → MongoDB và dữ liệu cục bộ.
+5. Mô hình dữ liệu và quan hệ dự án phân cấp.
+6. Phân quyền Giám đốc/Trưởng phòng/Nhân viên; kiểm tra quyền ở server.
+7. Luồng task, lịch Việt Nam và cập nhật reminder.
+8. Thảo luận, bình luận, file và moderation.
+9. Chat 1:1/nhóm store-and-forward, outbox, cursor, chống trùng và trạng thái giao/đọc.
+10. Xử lý lỗi, conflict version, block và kiểm tra tệp.
+11. Chiến lược kiểm thử: unit/API/SQLite/thiết bị và các giới hạn của từng loại bằng chứng.
+12. Kết quả thực nghiệm thật: bảng test, ảnh emulator/điện thoại, log API/Mongo và phép đo hiệu năng.
+13. Hạn chế: polling foreground, chưa E2EE, attachment nhỏ, chưa push/background.
+14. Hướng phát triển: Google Calendar OAuth, push notification, object storage, E2EE.
+15. Phân công, bài học và kết luận.
+
+## Nguyên tắc trình bày kết quả
+
+- Chỉ ghi “đã chạy” khi có output/ảnh/log của lần chạy hiện tại.
+- Typecheck, unit test và export JavaScript không chứng minh cùng một điều với cài APK.
+- Mock database không chứng minh transaction thật; cần replica set local hoặc Atlas test.
+- Một emulator không chứng minh luồng chat offline hai thiết bị.
+- Google Calendar là hướng phát triển, không mô tả như tính năng đã tích hợp.
+
+## Bằng chứng tối thiểu nên có
+
+- Output `typecheck`, `lint`, `test`, Android export và Gradle build.
+- Đăng ký/đăng nhập và CRUD lịch/task trên Android.
+- Ba tài khoản với quyền khác nhau trong dự án phân cấp.
+- Hai thiết bị cho queued → delivered → read, mất API → retry và khôi phục SQLite.
+- Chat nhóm trước/sau khi loại thành viên.
+- Multipart đúng/sai kích thước và kiểm tra quyền tải.
+- Kết quả migration dry-run trên bản sao database nếu dùng dữ liệu cũ.
+- Kết quả phép đo hiệu năng có môi trường và phương pháp đầy đủ.

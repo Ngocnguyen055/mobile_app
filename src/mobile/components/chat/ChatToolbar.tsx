@@ -6,7 +6,6 @@ import { styles } from "../../styles/app.ts";
 
 type ChatToolbarProps = {
   contact: ChatContact | null;
-  online: boolean;
   blocked: boolean;
   onBack: () => void;
   onOpenInfo: () => void;
@@ -14,7 +13,6 @@ type ChatToolbarProps = {
 
 function ChatToolbar({
   contact,
-  online,
   blocked,
   onBack,
   onOpenInfo,
@@ -35,8 +33,7 @@ function ChatToolbar({
             <View style={styles.contactText}>
               <Text style={styles.contextTitle}>{contact.name}</Text>
               <Text style={styles.contextSubtitle}>
-                {contact.email} ·{" "}
-                {blocked ? "Đã chặn" : online ? "Online" : "Offline"}
+                {contact.email} · {blocked ? "Đã chặn" : "Chat qua máy chủ"}
               </Text>
             </View>
           </View>

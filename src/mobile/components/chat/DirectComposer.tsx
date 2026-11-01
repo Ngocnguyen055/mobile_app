@@ -8,7 +8,6 @@ import { styles } from "../../styles/app.ts";
 type DirectComposerProps = {
   contact: ChatContact;
   body: string;
-  online: boolean;
   blocked: boolean;
   sending: boolean;
   uploading: boolean;
@@ -20,7 +19,6 @@ type DirectComposerProps = {
 function DirectComposer({
   contact,
   body,
-  online,
   blocked,
   sending,
   uploading,
@@ -28,9 +26,8 @@ function DirectComposer({
   onSend,
   onAttach,
 }: DirectComposerProps) {
-  const canSend =
-    online && !blocked && canSendDirect(body, contact.id, sending);
-  const canAttach = online && !blocked && !sending && !uploading;
+  const canSend = !blocked && canSendDirect(body, contact.id, sending);
+  const canAttach = !blocked && !sending && !uploading;
 
   return (
     <View style={styles.chatComposer}>
@@ -53,13 +50,11 @@ function DirectComposer({
         placeholder={
           blocked
             ? "Bạn đã chặn người dùng này"
-            : online
-              ? "Nhập tin nhắn"
-              : `${contact.name} đang offline`
+            : `Nhắn ${contact.name} · tin được lưu trên máy chủ`
         }
         placeholderTextColor="#64748b"
         maxLength={4000}
-        editable={!sending && !blocked && online}
+        editable={!sending && !blocked}
         returnKeyType="send"
         onSubmitEditing={() => {
           if (canSend) onSend();

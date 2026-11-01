@@ -1,7 +1,7 @@
 import React, { memo } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 
-import type { StoredMessage } from "@ds01/shared";
+import type { StoredMessage } from "../domain/chat.ts";
 import {
   chatAttachmentUrl,
   getToken,
@@ -22,14 +22,11 @@ type MessagesScreenProps = {
   search: string;
   searchResults: ChatContact[];
   searching: boolean;
-  blockedPeerIds: string[];
-  onlineUserIds: string[];
+  blockedUserIds: string[];
   selectedContact: ChatContact | null;
   messages: StoredMessage[];
   selectedMessages: StoredMessage[];
   opening: boolean;
-  modes: Record<string, string>;
-  forceRelay: boolean;
   onSearchChange: (value: string) => void;
   onSearch: () => void;
   onRefreshContacts: () => void;
@@ -38,7 +35,6 @@ type MessagesScreenProps = {
   onDownloadAttachment: (
     attachment: NonNullable<StoredMessage["message"]["attachments"]>[number],
   ) => void;
-  onToggleForceRelay: () => void;
 };
 
 function MessagesScreen({
@@ -48,21 +44,17 @@ function MessagesScreen({
   search,
   searchResults,
   searching,
-  blockedPeerIds,
-  onlineUserIds,
+  blockedUserIds,
   selectedContact,
   messages,
   selectedMessages,
   opening,
-  modes,
-  forceRelay,
   onSearchChange,
   onSearch,
   onRefreshContacts,
   onOpenContact,
   onShowContactActions,
   onDownloadAttachment,
-  onToggleForceRelay,
 }: MessagesScreenProps) {
   if (!selectedContact) {
     const conversations = [...contacts].sort((left, right) => {
@@ -153,8 +145,7 @@ function MessagesScreen({
             contact.id,
           );
           const latest = history.at(-1);
-          const contactOnline = onlineUserIds.includes(contact.id);
-          const blocked = blockedPeerIds.includes(contact.id);
+          const blocked = blockedUserIds.includes(contact.id);
           const preview = latest
             ? latest.message.type === "attachment"
               ? `📎 ${latest.message.attachments?.[0]?.name || "Tệp đính kèm"}`
@@ -176,21 +167,12 @@ function MessagesScreen({
                 <Text style={styles.contactAvatarText}>
                   {contact.name.trim().charAt(0).toUpperCase()}
                 </Text>
-                <View
-                  style={[
-                    styles.presenceDot,
-                    styles.contactPresenceDot,
-                    contactOnline
-                      ? styles.presenceOnline
-                      : styles.presenceOffline,
-                  ]}
-                />
               </View>
               <View style={styles.contactText}>
                 <View style={styles.contactTitleRow}>
                   <Text style={styles.strong}>{contact.name}</Text>
                   <Text style={styles.muted}>
-                    {blocked ? "Đã chặn" : contactOnline ? "Online" : "Offline"}
+                    {blocked ? "Đã chặn" : "Máy chủ"}
                   </Text>
                 </View>
                 <Text style={styles.muted}>{contact.email}</Text>
@@ -218,8 +200,7 @@ function MessagesScreen({
     );
   }
 
-  const contactOnline = onlineUserIds.includes(selectedContact.id);
-  const contactBlocked = blockedPeerIds.includes(selectedContact.id);
+  const contactBlocked = blockedUserIds.includes(selectedContact.id);
   const visibleMessages = directMessagesForContact(
     selectedMessages,
     currentUserId,
@@ -232,20 +213,13 @@ function MessagesScreen({
         <Text style={styles.muted}>
           {contactBlocked
             ? "Bạn đã chặn người dùng này. Tin nhắn mới sẽ bị từ chối."
-            : contactOnline
-              ? `Đang online · ${modes[selectedContact.id] || "chưa chọn đường truyền"}`
-              : "Đang offline · không có hàng đợi giao tin offline"}
+            : "Tin nhắn được lưu trên máy chủ và giao khi người nhận mở ứng dụng."}
         </Text>
         <View style={styles.wrap}>
           <Button
-            label="Làm mới trạng thái"
+            label="Làm mới tin nhắn"
             onPress={() => onOpenContact(selectedContact)}
             disabled={opening}
-            secondary
-          />
-          <Button
-            label={forceRelay ? "Đang ép RELAY" : "DIRECT trước"}
-            onPress={onToggleForceRelay}
             secondary
           />
         </View>
@@ -262,10 +236,6 @@ function MessagesScreen({
       )}
       {visibleMessages.map((row) => {
         const outgoing = row.message.senderId === currentUserId;
-        const route =
-          row.status === "pending"
-            ? "Đang chọn đường truyền"
-            : row.message.mode;
         return (
           <View
             key={`${row.message.messageId}-${row.message.senderId}-${row.message.receiverId}`}
@@ -325,7 +295,7 @@ function MessagesScreen({
                 <Text style={styles.messageBody}>{row.message.body}</Text>
               )}
               <Text style={styles.messageMeta}>
-                {formatViDateTime(row.message.timestamp)} · {route} ·{" "}
+                {formatViDateTime(row.message.timestamp)} · Máy chủ ·{" "}
                 {directMessageStatusLabel(row.status, outgoing)}
               </Text>
             </View>

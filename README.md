@@ -1,344 +1,249 @@
-# Student Planner + DS01 P2P Chat
+# Student Planner
 
-Monorepo TypeScript cho bài tập lớn nhóm ba sinh viên: ứng dụng Android quản lý dự án và lịch, web peer nhỏ để demo DS01, REST API MongoDB, signaling Socket.IO và relay Socket.IO chạy **hai process riêng**. Android dùng Expo development build có `react-native-webrtc`; Expo Go không chạy được module native này.
+Ứng dụng Android quản lý lịch cá nhân, dự án, công việc, thảo luận và tin nhắn cho nhóm sinh viên. Repository này là phần **Mobile** độc lập; mã DS01 P2P/WebRTC đã được chuyển sang repository riêng và không còn là dependency của ứng dụng.
 
-## Trạng thái kiểm chứng
+## Công nghệ
 
-- Lượt 20/10/2026 sau khi bổ sung chat tìm email, ảnh/tệp, chặn và xóa cục bộ: typecheck toàn monorepo, lint, **87/87 test trong 22 file**, web build và Android JavaScript export đều đạt. Test dùng HTTP multipart thật với API mock database, SQLite thật trong bộ nhớ và signaling/relay Socket.IO thật trên cổng động. Xem [evidence/direct-chat-search-files-block-2026-10-20.txt](docs/evidence/direct-chat-search-files-block-2026-10-20.txt). Chưa xem giao diện mới trên emulator, chưa dùng Atlas cho API chat mới và chưa chứng minh WebRTC DIRECT giữa hai thiết bị.
-- Bản dự án phân cấp đã chạy trên máy phát triển: typecheck (cả các script), lint, `npm test` **65/65 test trong 17 file**, web build và Android JavaScript export. Bộ test có thêm ACL Giám đốc / Trưởng phòng / Nhân viên, membership/manager, archive, post/comment/file permissions, inbox, task ownership và thu hồi nhóm qua Socket.IO. Test API phần mới dùng database mock; DataChannel nhận sau thu hồi là mô phỏng. Đầu ra thật ở [evidence/hierarchy-2026-10-07.txt](docs/evidence/hierarchy-2026-10-07.txt).
-- Các lượt trước đã chạy lint/typecheck, Expo dependency check/prebuild và native build. Chưa thử UI drawer và các luồng phân cấp mới trên emulator/điện thoại; Android export không thay thế native build hay kiểm tra thao tác.
-- Benchmark relay localhost 100 tin tuần tự: p50 0,545 ms, p95 1,023 ms; đầu ra thật ở `docs/evidence/benchmark.txt`. Chưa đo trên Internet.
-- Test tự động kiểm tra discovery ba peer, nhóm có sửa gần đồng thời, relay định tuyến và từ chối sender giả, fallback từ **DataChannel giả lập không mở** sang relay, ACK, chống trùng và tách lịch sử chat nhóm/1:1. Bản chat mới còn kiểm tra tìm email, metadata tệp, cache/xóa/chặn cục bộ và signaling/relay từ chối cặp đã chặn. `npm run test:calendar-api` đã chạy thật với MongoDB Atlas cho lịch; `npm run test:contacts-api` là bằng chứng của API danh bạ cũ. Chưa kiểm chứng API chat mới với Atlas, DIRECT WebRTC thực, notification Android, Google OAuth hay đồng bộ Google Calendar với tài khoản thật.
-- Development build đã chạy sau đăng nhập trên Android emulator. Ngày 28/09/2026, ADB đã xác nhận ba phạm vi lịch, chính sách nút tạo, điều hướng `Xem / sửa`, lịch dự án không có nút tạo và hai thanh công cụ cố định khi cuộn. Ảnh chat ngày 05/10/2026 chỉ xác nhận giao diện danh bạ cũ và hội thoại offline; không chứng minh giao diện tìm email, gửi tệp hoặc chặn mới. Việc gửi 1:1 giữa hai peer online, DIRECT/RELAY thật và notification vẫn cần nhóm kiểm tra theo `docs/test-plan.md`.
-- Khi chạy demo thật, lưu log và ảnh vào `docs/evidence/` theo `docs/demo-script.md`. Không có ảnh hoặc số đo thực tế nào được dựng sẵn.
-- Chưa chạy migration hoặc `test:hierarchy-api` với Atlas trong lượt này: cơ chế duyệt tự động hết quota và chặn lệnh trước khi thực thi. Các kết quả Atlas của lịch/danh bạ ở trên thuộc bản trước, không chứng minh transaction/phân quyền mới. Xem [nghiệp vụ và hướng dẫn dự án phân cấp](docs/hierarchical-projects.md).
+- Mobile: React Native + Expo development build + TypeScript.
+- API: Node.js, Express, Mongoose, JWT.
+- Dữ liệu dùng chung: MongoDB Atlas hoặc MongoDB replica set local.
+- Dữ liệu trên thiết bị: SQLite cho lịch sử chat, outbox, cursor đồng bộ và lịch nhắc.
+- Nhắc việc: `expo-notifications`.
 
-## Yêu cầu trước khi clone
+Chat hiện dùng mô hình **store-and-forward qua REST API**. Người nhận không cần online cùng lúc: API lưu tin trong MongoDB, Mobile đồng bộ khi mở app. Không còn signaling, relay Socket.IO, WebRTC, Peer ID hay nhãn DIRECT/RELAY trong ứng dụng này.
 
-- Git, Node.js `>=22.13.0` và npm. Repository hiện đã được kiểm tra với Node.js 24.14.0; bộ test SQLite dùng module `node:sqlite` nên không chạy trên Node 20.
-- MongoDB Atlas hoặc MongoDB cục bộ có **replica set** để chạy transaction. Docker chỉ là lựa chọn phụ cho MongoDB local; cấu hình Compose có replica set `rs0`.
-- Android Studio có Android SDK Platform 36, Build Tools 36.0.0, Platform Tools, Emulator, Command-line Tools và một thiết bị trong Device Manager.
-- JDK đi kèm Android Studio. Trên Windows, đường dẫn mặc định thường là `C:\Program Files\Android\Android Studio\jbr`.
+## Chức năng chính
 
-Android Studio chỉ cần để cài SDK và khởi động máy ảo; không bắt buộc mở source code của repository trong Android Studio. Ứng dụng dùng `react-native-webrtc`, vì vậy phải chạy **Expo development build** và không thể dùng Expo Go.
+- Đăng ký, đăng nhập và phiên JWT.
+- Dự án độc lập hoặc dự án phân cấp với Giám đốc, Trưởng phòng, Nhân viên.
+- Quản lý thành viên, dự án con, lưu trữ/khôi phục và nguồn lực/ngân sách.
+- Task có thời gian bắt đầu/kết thúc, phân công, trạng thái, deadline và tiến độ từng người.
+- Lịch ngày/tuần/tháng theo định dạng Việt Nam; sự kiện cá nhân và lịch dự án.
+- Nhắc trước 1 tuần, 1 ngày, 1 giờ và các mốc ngắn hơn có trong giao diện.
+- Bảng thảo luận có bài viết, bình luận và tệp nhỏ.
+- Chat 1:1 bằng tìm kiếm email; chat nhóm đồng bộ theo thành viên dự án.
+- Tin text, ảnh/tệp nhỏ, chặn người dùng, xóa hội thoại phía mình và trạng thái queued/delivered/read.
+- Hộp thư thông báo trong ứng dụng.
 
-## Chạy lần đầu sau khi clone
+## Yêu cầu môi trường
 
-Các lệnh dưới đây chạy tại **thư mục gốc của repository**. Trên Windows PowerShell, tài liệu dùng `npm.cmd` để tránh lỗi execution policy; trên macOS/Linux có thể thay bằng `npm`.
+- Node.js 20 hoặc 22 LTS được khuyến nghị.
+- Android Studio, Android SDK và một emulator đang chạy.
+- JDK 17. Có thể dùng JBR đi kèm Android Studio.
+- MongoDB Atlas, hoặc Docker nếu muốn chạy MongoDB local.
 
-### 1. Clone, cài package và tạo `.env`
+Expo Go không phù hợp vì ứng dụng dùng các module native như SQLite, notification và development client. Hãy dùng `expo run:android`.
+
+## Cài đặt lần đầu
+
+Tại thư mục gốc repository:
 
 ```powershell
-git clone https://github.com/Ngocnguyen055/mobile_app.git Mobile_App
-Set-Location Mobile_App
-npm.cmd ci
+npm.cmd install
 Copy-Item .env.example .env
 ```
 
-Trên macOS/Linux, dùng `cd Mobile_App`, `npm ci` và `cp .env.example .env`. Chỉ sửa file `.env`. Không dán mật khẩu hoặc connection string thật vào `.env.example`, vì file mẫu được đưa lên GitHub. `.env` đã nằm trong `.gitignore`.
-
-### 2. Cấu hình MongoDB
-
-Với MongoDB Atlas:
-
-1. Tạo database user trong **Database Access**.
-2. Cho phép IP hiện tại trong **Network Access**.
-3. Lấy connection string ở **Connect → Drivers** và chọn Node.js.
-4. Điền database name, ví dụ `student_planner`, rồi gán chuỗi đó cho `MONGO_URL` trong `.env`.
-
-Ví dụ cấu trúc, không dùng nguyên giá trị này:
+Tạo file `.env` **ở thư mục gốc**, cùng cấp với `package.json`:
 
 ```dotenv
-MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/student_planner?retryWrites=true&w=majority
-```
-
-Nếu mật khẩu có ký tự như `@`, `:`, `/` hoặc `#`, phải URL encode mật khẩu trước khi đưa vào connection string. `JWT_SECRET` và `PEER_SECRET` nên là hai chuỗi ngẫu nhiên khác nhau, dài ít nhất 32 ký tự.
-
-Nếu muốn dùng MongoDB cục bộ bằng Docker Desktop, dùng `MONGO_URL=mongodb://127.0.0.1:27017/student_planner?replicaSet=rs0` rồi chạy trước bước seed:
-
-```powershell
-docker compose -f deploy/compose.yaml up -d mongo
-docker compose -f deploy/compose.yaml ps
-```
-
-Nếu dùng Android Emulator mặc định của Android Studio, đặt các URL mobile như sau:
-
-```dotenv
+MONGO_URL=mongodb+srv://USER:PASSWORD@cluster.example.mongodb.net/student_planner
+JWT_SECRET=thay-bang-chuoi-bi-mat-dai-va-ngau-nhien
+API_PORT=4000
 EXPO_PUBLIC_API_URL=http://10.0.2.2:4000
-EXPO_PUBLIC_SIGNAL_URL=http://10.0.2.2:4001
-EXPO_PUBLIC_RELAY_URL=http://10.0.2.2:4002
 ```
 
-`10.0.2.2` là địa chỉ để Android Emulator truy cập máy Windows đang chạy server. Nếu dùng điện thoại thật, thay bằng IPv4 LAN của máy tính, ví dụ `http://192.168.1.20:4000`, và cho phép các cổng qua Windows Firewall. Các biến `PUBLIC_*` và `VITE_*` cho server/web vẫn dùng `localhost` khi chạy trên cùng máy.
+Quy ước URL:
 
-Để Google Calendar trống hai biến `EXPO_PUBLIC_GOOGLE_*` cho đến khi nhóm tạo OAuth client thật. Các phần đăng nhập, dự án, task và lịch nội bộ vẫn chạy bình thường.
+- Android emulator: `http://10.0.2.2:4000`.
+- Điện thoại thật cùng Wi-Fi: `http://IP_LAN_CUA_MAY:4000`.
+- APK dùng qua Internet: URL HTTPS thật, ví dụ `https://api.example.org`.
 
-### 3. Cấu hình Java và Android SDK trên Windows
+Không commit `.env`. `.env.example` chỉ chứa cấu hình mẫu, không chứa secret thật.
 
-Mở PowerShell mới và đặt biến cho terminal hiện tại:
+### MongoDB Atlas
+
+Trong Atlas, tạo database user, cho IP hiện tại truy cập trong Network Access rồi copy connection string vào `MONGO_URL`. Nếu mật khẩu có ký tự đặc biệt, phải URL-encode. Có thể kiểm tra SRV bằng:
 
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-$env:ANDROID_HOME = Join-Path $env:LOCALAPPDATA "Android\Sdk"
-$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
-java -version
-adb version
+Resolve-DnsName -Type SRV _mongodb._tcp.TEN_CLUSTER.mongodb.net
 ```
 
-Để lưu cho các terminal mở sau này:
+### MongoDB local tùy chọn
+
+Docker không bắt buộc cho Android. Nếu dùng local:
 
 ```powershell
-$androidSdk = Join-Path $env:LOCALAPPDATA "Android\Sdk"
-$javaHome = "C:\Program Files\Android\Android Studio\jbr"
-[Environment]::SetEnvironmentVariable("JAVA_HOME", $javaHome, "User")
-[Environment]::SetEnvironmentVariable("ANDROID_HOME", $androidSdk, "User")
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$pathParts = @($userPath -split ';' | Where-Object { $_ })
-foreach ($entry in @("$javaHome\bin", "$androidSdk\platform-tools")) {
-  if ($pathParts -notcontains $entry) { $pathParts = @($entry) + $pathParts }
-}
-[Environment]::SetEnvironmentVariable("Path", ($pathParts -join ';'), "User")
+docker compose -f deploy/compose.yaml up -d
 ```
 
-Đóng và mở lại PowerShell sau khi lưu biến. Chạy `where.exe java`, `java -version`, `adb version` để phát hiện một JDK cũ còn đứng trước trong `PATH`. Nếu Android SDK nằm ở thư mục khác, xem đường dẫn thật tại **Android Studio → Settings → Android SDK** rồi dùng đường dẫn đó. Trong Android Studio, mở **SDK Manager**, cài đủ các thành phần nêu ở phần yêu cầu và chấp nhận Android SDK licenses.
+URI mẫu đã cấu hình replica set:
 
-### 4. Tạo dữ liệu mẫu và chạy API
-
-Seed là tùy chọn; có thể bỏ qua và đăng ký tài khoản mới trong ứng dụng. Với database đã dùng bản cũ, dừng các service, sao lưu rồi chạy migration trước khi mở bản mới:
-
-```powershell
-npm.cmd run migrate:projects
-npm.cmd run migrate:projects -- --apply
+```dotenv
+MONGO_URL=mongodb://127.0.0.1:27017/student_planner?replicaSet=rs0
 ```
 
-Lệnh đầu là dry run không sửa dữ liệu. Lệnh `--apply` bổ sung vai trò/thông tin nhóm, giữ dự án cũ là độc lập và backfill revision bài thảo luận. Xem chi tiết trong [hierarchical-projects.md](docs/hierarchical-projects.md). Database mới tạo bằng API đã có cấu trúc mới; nếu chạy seed vào DB cũ, chạy migration lại sau seed.
+Replica set cần cho các transaction cập nhật membership/task/project atomically.
+
+## Tạo dữ liệu mẫu
+
+Sau khi MongoDB truy cập được:
 
 ```powershell
 npm.cmd run seed
 ```
 
-Lệnh seed ghi trực tiếp vào database được chỉ ra bởi `MONGO_URL` và có thể chạy lại để bổ sung phần dữ liệu mẫu còn thiếu. Không chạy seed trên database production hoặc database chứa dữ liệu cần giữ nguyên.
+Tài khoản mẫu dùng chung mật khẩu `StudentDemo123!`:
 
-Seed thành công sẽ in ba tài khoản:
+- `an@example.test`
+- `binh@example.test`
+- `chi@example.test`
 
-| Email               | Mật khẩu          |
-| ------------------- | ----------------- |
-| `an@example.test`   | `StudentDemo123!` |
-| `binh@example.test` | `StudentDemo123!` |
-| `chi@example.test`  | `StudentDemo123!` |
+Script seed có thể chạy lại; nó không tạo lặp user và dữ liệu mẫu chính.
 
-Chỉ dùng các tài khoản và mật khẩu mẫu trong môi trường học tập/phát triển.
+## Chạy ứng dụng
 
-Mở terminal thứ nhất tại thư mục gốc:
+Mở hai terminal tại thư mục gốc.
+
+Terminal 1 — API:
 
 ```powershell
 npm.cmd run dev:api
 ```
 
-Có thể kiểm tra API và MongoDB bằng:
+Kiểm tra API tại `http://localhost:4000/health`.
 
-```powershell
-Invoke-RestMethod http://localhost:4000/health
-```
-
-Kết quả cần có `service: api` và `mongo: True`.
-
-### 5. Build và chạy ứng dụng Android
-
-Khởi động máy ảo trong **Android Studio → Device Manager** và đợi Android vào màn hình chính. Ở terminal thứ hai, vẫn tại thư mục gốc, chạy:
+Terminal 2 — build/cài development client lần đầu:
 
 ```powershell
 npm.cmd run android
 ```
 
-Lệnh này gọi `expo run:android` đúng trong workspace `src/mobile`, tự tạo thư mục native nếu bản clone chưa có, build development client, cài APK lên máy ảo và khởi động Metro. Lần đầu có thể mất vài phút. Không chạy `npx expo run:android` tại thư mục gốc vì cấu hình mobile thật nằm trong `src/mobile`.
-
-Sau khi development client đã được cài, những lần chạy tiếp theo chỉ cần:
+Sau khi development client đã được cài, các lần sửa TypeScript thông thường chỉ cần:
 
 ```powershell
 npm.cmd run dev:mobile
 ```
 
-Nhấn `a` để mở app trên Android hoặc `r` để reload app đang mở. Phải khởi động lại Metro sau khi thay đổi biến `EXPO_PUBLIC_*`. Chỉ cần build lại development client khi đổi native dependency, plugin hoặc cấu hình Android.
+Sau đó nhấn `a` để mở app trên emulator. Nếu vừa đổi dependency/plugin native, phải chạy lại `npm.cmd run android`.
 
-### 6. Chạy chat và web peer DS01
-
-Các chức năng tài khoản, dự án, task và lịch chỉ cần API. Chat nhóm dự án cần cả API, signaling và relay để kiểm tra membership/archive. Trong `.env`, bổ sung `API_INTERNAL_URL=http://127.0.0.1:4000` và `SIGNAL_INTERNAL_URL=http://127.0.0.1:4001`; ba service dùng cùng `PEER_SECRET`. Khởi động signaling và relay trước khi mở Chat trên Android, ở hai terminal riêng:
+Nếu chỉ cần tạo APK debug mà không cài lên emulator:
 
 ```powershell
-npm.cmd run dev:signaling
+cd src/mobile/android
+.\gradlew.bat app:assembleDebug -x lint -x test
 ```
+
+APK nằm tại `src/mobile/android/app/build/outputs/apk/debug/app-debug.apk`. Đây là bản debug/development, không phải APK release đã ký để phát hành.
+
+### JDK và Android SDK trên Windows
+
+Cho terminal hiện tại:
 
 ```powershell
-npm.cmd run dev:relay
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 ```
 
-Kiểm tra hai dịch vụ:
-
-```powershell
-Invoke-RestMethod http://localhost:4001/health
-Invoke-RestMethod http://localhost:4002/health
-```
-
-Để mở web peer, chạy thêm:
-
-```powershell
-npm.cmd run dev:web
-```
-
-| Thành phần | Địa chỉ local           |
-| ---------- | ----------------------- |
-| API        | `http://localhost:4000` |
-| Signaling  | `http://localhost:4001` |
-| Relay      | `http://localhost:4002` |
-| Web peer   | `http://localhost:5173` |
-| Metro      | `http://localhost:8081` |
-
-Mở ba cửa sổ hoặc profile trình duyệt riêng và đăng ký `peer-a`, `peer-b`, `peer-c` để chạy demo web. Mỗi profile giữ secret Peer ID riêng trong localStorage.
-
-Thứ tự đầy đủ khi chạy cả Mobile và DS01 là: MongoDB → migration nếu DB cũ / seed tùy chọn → API → signaling → relay → Android/Metro; web peer là tùy chọn.
-
-## Dự án phân cấp, thảo luận và thông báo
-
-Khi tạo dự án, chọn **Độc lập** (thành viên quản lý task chung như trước) hoặc **Phân cấp** (Giám đốc → Trưởng phòng → Nhân viên). Trong dự án, dùng **☰** mở menu dọc **Task, Lịch, Tiến độ, Chat, Thảo luận, Nguồn lực, Thành viên, Quản lý dự án**.
-
-Giám đốc thêm thành viên vào tổng bằng email, rồi tạo dự án con và bổ nhiệm Trưởng phòng. Trưởng phòng chỉ chọn thành viên đã thuộc tổng; nhân viên chỉ cập nhật trạng thái task được giao. Tiến độ có nút mở task từng người và trạng thái Quá hạn tự tính theo deadline. Xóa thành viên thu hồi quyền/nhóm chat, bỏ hoặc chuyển phân công; xóa Trưởng phòng bắt buộc chọn người thay thế. Lưu trữ làm dự án chỉ đọc; lưu trữ tổng áp dụng cả con và khôi phục tổng có lựa chọn khôi phục con.
-
-Phần **Bổ nhiệm Trưởng phòng** dùng danh sách thả xuống: bấm ô chọn, nhập email hoặc một phần email để lọc, rồi chọn thành viên. Danh sách chỉ lấy người đã thuộc dự án tổng và đủ điều kiện bổ nhiệm; gõ email không tự thêm tài khoản vào dự án. Cách chọn này áp dụng cả khi tạo dự án con, thay Trưởng phòng và chọn người thay thế lúc xóa.
-
-Nhóm chat dự án được tạo tự động và đồng bộ membership từ MongoDB. Tab **Tài liệu** được bỏ, chuyển tệp / ảnh vào bài **Thảo luận** (tối đa 3 tệp/bài, 512 KiB/tệp); bình luận có quyền sửa/xóa riêng. **🔔 Thông báo** là hộp thư lưu MongoDB, loại actor và giới hạn đúng dự án; chưa có push server. Quy tắc/API/giả định và luồng demo đầy đủ ở [hierarchical-projects.md](docs/hierarchical-projects.md).
-
-Development build phải được tạo lại sau khi thay native dependency/config plugin. `react-native-webrtc` dùng plugin `@config-plugins/react-native-webrtc`. Thử chat trực tiếp trên Android **ngay khi có APK**: đăng nhập hai máy cùng Wi-Fi, chọn chat dự án, gửi và xác nhận nhãn DIRECT và relay log không có `FORWARD` của Message ID đó. Nếu không DIRECT, lấy ICE state/log và sửa trước khi tuyên bố chức năng chạy.
-
-## Lỗi cài đặt thường gặp
-
-### `Unsupported class file major version 69`
-
-Terminal đang dùng JDK quá mới. Trỏ `JAVA_HOME` về thư mục `jbr` của Android Studio, mở terminal mới rồi chạy lại `npm.cmd run android`. Có thể dừng Gradle daemon cũ trước khi build lại:
-
-```powershell
-Push-Location src/mobile/android
-.\gradlew.bat --stop
-Pop-Location
-```
-
-### `SDK location not found`
-
-Kiểm tra `ANDROID_HOME`. Nếu vẫn lỗi và thư mục `src/mobile/android` đã được tạo, tạo file `src/mobile/android/local.properties` với đường dẫn SDK của chính máy đó:
+Nếu Gradle không thấy SDK, tạo `src/mobile/android/local.properties` trên máy cá nhân:
 
 ```properties
-sdk.dir=C:/Users/<ten-windows>/AppData/Local/Android/Sdk
+sdk.dir=C:\\Users\\TEN_BAN\\AppData\\Local\\Android\\Sdk
 ```
 
-Không đưa `local.properties` của máy cá nhân lên GitHub.
+`local.properties` là cấu hình riêng của máy và không nên commit.
 
-### `Activity not started, unable to resolve Intent`
+## Luồng kiểm thử nhanh
 
-Development client chưa được cài hoặc máy ảo chưa khởi động xong. Cold Boot máy ảo nếu cần, đợi màn hình Android xuất hiện rồi chạy `npm.cmd run android`. Sau khi APK đã được cài mới dùng `npm.cmd run dev:mobile`.
+1. Đăng nhập `binh@example.test` và kiểm tra lịch mở ngay sau login.
+2. Tạo/sửa/xóa sự kiện cá nhân, chọn ngày giờ bằng picker và đặt nhắc.
+3. Tạo dự án độc lập, thêm thành viên bằng email, tạo task và phân công.
+4. Tạo dự án phân cấp bằng An; thêm Bình/Chi vào tổng, tạo dự án con và chọn Trưởng phòng.
+5. Đăng nhập Trưởng phòng/Nhân viên để kiểm tra nút và API đều giới hạn đúng quyền.
+6. Đăng bài thảo luận, bình luận và tải tệp nhỏ.
+7. Mở Tin nhắn, tìm email của user khác, gửi tin khi user kia chưa mở app.
+8. Đăng nhập user nhận trên emulator/thiết bị thứ hai; tin phải được sync và đổi trạng thái giao/đọc.
+9. Tắt API, gửi một tin text; mở lại API và kiểm tra outbox tự gửi lại.
+10. Chat nhóm dự án, sau đó xóa một thành viên và xác nhận họ không nhận tin nhóm mới.
 
-### MongoDB Atlas báo `querySrv ECONNREFUSED`
+Chi tiết ở [docs/demo-script.md](docs/demo-script.md) và [docs/test-plan.md](docs/test-plan.md).
 
-Kiểm tra lại Atlas Network Access, database user, connection string và DNS SRV:
-
-```powershell
-Resolve-DnsName -Type SRV _mongodb._tcp.<cluster>.mongodb.net
-```
-
-Nếu PowerShell phân giải được nhưng Node.js vẫn bị từ chối, thử mạng khác hoặc đổi DNS của Windows sang DNS công cộng, mở terminal mới rồi chạy lại. Không chuyển sang database giả để bỏ qua lỗi Atlas.
-
-### App không gọi được API
-
-- Android Emulator dùng `10.0.2.2`, không dùng `localhost`.
-- Điện thoại thật dùng IPv4 LAN của máy chạy API và phải cùng mạng Wi-Fi.
-- Sau khi sửa `.env`, dừng Metro bằng `Ctrl+C` rồi chạy lại `npm.cmd run dev:mobile`.
-- Kiểm tra `http://localhost:4000/health` trên máy tính trước.
-
-### PowerShell báo `npm.ps1 cannot be loaded`
-
-Dùng `npm.cmd` và `npx.cmd` như các lệnh trong README, hoặc chạy lệnh bằng Command Prompt. Không cần thay execution policy của toàn máy chỉ để chạy repository này.
-
-### `adb devices` không thấy máy ảo
-
-Đợi máy ảo vào màn hình chính rồi chạy `adb devices`. Nếu danh sách vẫn trống, dùng **Cold Boot Now** trong Device Manager, kiểm tra Platform Tools và khởi động lại ADB bằng `adb kill-server`, sau đó `adb start-server`.
-
-### Cổng đã được sử dụng
-
-API, signaling, relay và Metro lần lượt dùng cổng 4000, 4001, 4002 và 8081. Dừng process cũ hoặc terminal Metro cũ trước khi chạy thêm một bản; không mở hai Metro trên cùng cổng.
-
-## Lịch trên Android
-
-Sau khi đăng nhập hoặc khôi phục phiên, app mở **Lịch của tôi**. Đây là lịch tổng hợp, không yêu cầu chọn dự án trước:
-
-- task có deadline được phân công cho người đang đăng nhập từ mọi dự án họ tham gia;
-- sự kiện cá nhân do người dùng tạo;
-- sự kiện của các dự án mà người dùng là thành viên.
-
-Thanh điều hướng dưới cùng mở `Lịch`, `Dự án`, `Tin nhắn` và `Cá nhân`; mỗi dự án vẫn có tab lịch riêng. Lịch dùng múi giờ `Asia/Ho_Chi_Minh`, định dạng `dd/MM/yyyy`, tuần bắt đầu từ thứ Hai và có tiêu đề `T2, T3, T4, T5, T6, T7, CN`. Người dùng có thể chuyển ngày/tuần/tháng và lọc bằng đúng ba phạm vi `Tất cả`, `Cá nhân`, `Dự án`. Phạm vi `Dự án` gộp nội dung của mọi dự án người dùng được phép xem, thay vì tạo một nút lọc cho từng dự án.
-
-Trên lịch chính, `Tất cả` và `Cá nhân` chỉ cung cấp `+ Thêm sự kiện`; không có thao tác tạo task tại đây. Phạm vi `Dự án` không cung cấp nút thêm sự kiện hoặc task. Task và sự kiện gắn dự án hiển thị `Xem / sửa`; thao tác này mở đúng dự án và tab phù hợp trước khi cho phép chỉnh sửa. Tab `Lịch` bên trong một dự án cũng không có nút tạo sự kiện hoặc task; task được tạo trong tab `Task`, còn mục đã có vẫn được xem hoặc chỉnh sửa trong ngữ cảnh dự án.
-
-Khối `Lịch của tôi / Hiển thị` và header dự án gồm `☰`, `← Danh sách`, tên dự án, mục đang mở được đặt ngoài vùng cuộn dọc. Menu dự án mở theo chiều dọc trong drawer, không còn hàng tab cuộn ngang.
-
-Form tạo/sửa sự kiện mở trong modal sheet gần toàn màn hình. Trường chính mang nhãn `Nội dung sự kiện`; các tùy chọn còn lại gồm thời gian bắt đầu/kết thúc, cả ngày, dự án và mốc nhắc 1 tuần, 1 ngày hoặc 1 giờ. Chạm vào `Bắt đầu` hoặc `Kết thúc` sẽ mở bộ chọn ngày rồi bộ chọn giờ 24 giờ dạng spinner của Android, thay vì nhập chuỗi ngày giờ bằng tay. Bộ chọn dùng native module `@react-native-community/datetimepicker`, vì vậy cần tạo lại development build sau lần cài dependency đầu tiên. App gọi `GET /calendar` để lấy lịch tổng hợp; tạo, sửa và xóa sự kiện qua `POST /events`, `PATCH /events/:eventId`, `DELETE /events/:eventId`. API lấy danh tính từ JWT, chỉ trả sự kiện cá nhân của chính người dùng và sự kiện thuộc dự án họ có quyền truy cập.
-
-Form tạo/sửa task có hai trường riêng: `Bắt đầu` và `Kết thúc (deadline)`. Cả hai dùng cùng popup native chọn ngày rồi chọn giờ 24 giờ như sự kiện cá nhân, nên người dùng không phải nhập chuỗi thời gian. API lưu mốc mới trong `startsAt` và từ chối khi thời gian bắt đầu không nhỏ hơn thời gian kết thúc. `startsAt` vẫn là trường tùy chọn trong dữ liệu để các task đã tạo trước thay đổi này tiếp tục đọc được; `dueAt` vẫn là deadline dùng để tính sắp quá hạn, quá hạn và lên lịch nhắc.
-
-Khi thử tiếng Việt bằng bàn phím máy tính trong Android Emulator, chỉ bật một bộ gõ: tắt/chuyển UniKey trên Windows sang tiếng Anh và chọn `Tiếng Việt` trong Gboard của emulator, đồng thời bật `Hardware Input` trong cửa sổ Running Devices. Thử cùng chuỗi trong Chrome của emulator để phân biệt cấu hình IME với lỗi ứng dụng.
-
-Thông báo được lên lịch cục bộ trên Android. Khi thời gian hoặc mốc nhắc của sự kiện thay đổi, mã hiện tại hủy lịch cũ rồi tạo lịch mới; khi xóa sự kiện, mã hủy các thông báo tương ứng. Hành vi thực tế này còn phải kiểm tra trên emulator/điện thoại theo `docs/test-plan.md`.
-
-## Lệnh kiểm tra
-
-Chat cá nhân 1–1 không tự tải danh bạ. Trong tab `Tin nhắn`, nhập ít nhất 3 ký tự email để tìm tài khoản, chọn kết quả rồi chat khi peer online. Danh sách chính chỉ chứa các hội thoại/cache đã mở; mũi tên quay lại danh sách. Tin nhắn có ACK và nhãn `DIRECT`/`RELAY`; nút `+` gửi tối đa 3 ảnh/tệp mỗi lần, 512 KiB/tệp. Nút `!` hình tròn mở ảnh/tệp đã gửi và thao tác chặn/xóa; nhấn giữ hội thoại cũng có chặn/xóa. Xóa chỉ xóa SQLite trên thiết bị hiện tại; chặn lưu MongoDB và được signaling/relay/peer nhận kiểm tra. Không có giao tin offline hoặc kết bạn. Xem [API, lưu trữ, quyền tệp và giới hạn](docs/direct-chat.md). Chat nhóm trong tab `Chat` của dự án vẫn dùng `sendGroup` và không bị trộn vào hội thoại 1:1.
-
-Phần chat mới không có migration riêng phải chạy: API tạo collection/index `user_blocks` và `chat_attachments` qua Mongoose, còn mobile tạo bảng cache/block bằng `CREATE TABLE IF NOT EXISTS`. Sau khi pull code, hãy khởi động lại **API, signaling, relay và Metro** để cả bốn process dùng cùng giao thức mới. Migration dự án phân cấp trong phần cài đặt bên trên vẫn là việc riêng.
+## Kiểm tra mã nguồn
 
 ```powershell
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd test
+npm.cmd run export -w @student-planner/mobile
+```
+
+Các script tích hợp dùng MongoDB thật:
+
+```powershell
 npm.cmd run test:calendar-api
 npm.cmd run test:contacts-api
 npm.cmd run test:hierarchy-api
-npm.cmd run build -w @ds01/web-peer
-Push-Location src/mobile
-npx.cmd expo install --check
-Pop-Location
-npx.cmd tsx scripts/benchmark-relay.ts
 ```
 
-`test:calendar-api` và `test:contacts-api` cần MongoDB đang chạy, `MONGO_URL` đúng và dữ liệu seed. Script contacts chỉ đọc dữ liệu, có thể chọn tài khoản kiểm thử qua `CONTACTS_TEST_EMAIL`/`CONTACTS_TEST_PASSWORD`. `test:hierarchy-api` tạo database tạm riêng trên cluster cấu hình, dùng Mongo thật rồi dọn database tạm; cần tài khoản DB có quyền tương ứng. `benchmark-relay.ts` cần signaling và relay đang chạy; script in p50/p95/max của 100 lần gửi, chỉ xem là bằng chứng nếu thực sự chạy và lưu đầu ra. `scripts/simulate-fault.ps1` chạy riêng test DataChannel cố tình không mở để tái hiện fallback. `docs/test-plan.md` có ca kiểm thử thủ công cho API, thiết bị, mạng và OAuth.
+`test:hierarchy-api` tạo database kiểm thử riêng rồi dọn database đó; vẫn nên dùng tài khoản Atlas dành cho môi trường test.
 
-## Cấu hình Google Calendar
+## Database cũ và migration
 
-Google Calendar dùng Google Sign-In native, không qua Expo Go. Bật Google Calendar API và OAuth consent trong Google Cloud. Tạo **Android OAuth client** cho package `edu.student.plannerds01` cùng SHA-1 của debug/development build; tạo **Web OAuth client ID** và điền `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`. Xem [hướng dẫn Google Sign-In của Expo](https://docs.expo.dev/guides/google-authentication/) và [cấu hình client/SHA-1](https://react-native-google-signin.github.io/docs/setting-up/get-config-file). `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` để ghi nhận cấu hình bên ngoài nhưng native Android đối chiếu package/SHA-1 trong Google Cloud; app dùng Web client ID cho `GoogleSignin.configure`.
+Nếu database đã có dữ liệu từ phiên bản trước, hãy sao lưu trước. “Sao lưu rồi chạy migration” nghĩa là tạo bản backup để có thể khôi phục nếu dữ liệu cũ không đúng schema, sau đó chạy thử migration ở chế độ chỉ đọc:
 
-Trong app, **Kết nối Google** cấp quyền `calendar.events`, **Đồng bộ ngay** upsert một chiều các task chưa hoàn thành được phân công cho người dùng, sự kiện cá nhân và sự kiện dự án đang có trong lịch tổng hợp vào lịch chính của chính người đó. Mỗi mục tìm theo `privateExtendedProperty.studentPlannerKey` trước khi insert, rồi patch nếu đã tồn tại; ID ổn định tránh trùng khi hai lần insert chạy gần nhau. Không tự xóa sự kiện Google khi task hoàn thành hoặc một mục bị xóa trong app; nhóm cần xử lý thủ công các mục Google cũ. Token Google do native SDK quản lý; app không lưu token Google trong MongoDB. Chưa có credential Google trong repo, nên OAuth và đồng bộ thật chưa được kiểm thử. Xem [Google Calendar extended properties](https://developers.google.com/workspace/calendar/api/guides/extended-properties).
+```powershell
+npm.cmd run migrate:projects
+```
 
-## Internet và hai mạng
+Đọc kết quả DRY RUN. Chỉ khi đúng mới áp dụng:
 
-Xem `deploy/internet.env.example`, `deploy/Caddyfile.example` và `docs/architecture.md`. Có thể đặt API, signaling và relay trên một máy nhưng chạy process riêng, phía ngoài dùng HTTPS/WSS qua reverse proxy. Một cách thử không cần trả phí/tạo tài khoản là ba [Cloudflare Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) cho cổng 4000, 4001, 4002; nếu web peer cũng chạy trên máy chủ thì thêm tunnel thứ tư cho cổng 5173. URL ngẫu nhiên đổi khi restart, chỉ phù hợp demo. Cần build Android với ba URL mới, hoặc dùng Metro development build nạp lại cấu hình. Tunnel chỉ đưa signaling/relay ra Internet; nó **không** biến kết nối WebRTC thành DIRECT. NAT chặn đường trực tiếp thì app chuyển sang relay. Không có TURN trong repo.
+```powershell
+npm.cmd run migrate:projects -- --apply
+```
 
-## Cấu trúc
+Trong lúc migration, dừng API để không có request ghi đồng thời. Database mới tạo bằng `seed` không cần migration.
 
-- `src/mobile`: ứng dụng Android Expo. `App.tsx` chỉ ghép các controller hook với `AppRouter`; mã còn lại được chia theo trách nhiệm:
-  - `screens`: các màn hình và điều phối màn hình;
-  - `components`: UI dùng lại, chia tiếp theo miền `calendar`, `chat`, `discussion`, `projects`, `tasks` và `ui`;
-  - `hooks`: state và nghiệp vụ của ứng dụng;
-  - `services`: giao tiếp API, SQLite và Google Calendar;
-  - `domain`: các chính sách nghiệp vụ thuần, không phụ thuộc giao diện;
-  - `utils`: hàm biến đổi/tính toán dùng lại;
-  - `styles`: toàn bộ `StyleSheet` theo từng miền;
-  - `types`: kiểu dùng chung trong mobile.
-- `src/web-peer`: peer web DS01; `main.tsx` chỉ bootstrap, `App.tsx` render UI, `useWebPeer.ts` quản lý lifecycle và `store.ts` lưu localStorage.
-- `src/api`: REST API tài khoản/dự án/task/lịch/thảo luận/tệp/nguồn lực.
-- `src/signaling`: composition root cùng các handler riêng cho đăng ký/discovery, nhóm, SDP/ICE và maintenance heartbeat.
-- `src/relay`: chuyển đúng đích và ACK envelope qua Socket.IO.
-- `src/shared`: protocol/schema dùng chung, `PeerClient` facade, WebRTC direct transport, ACK/retry/dedup delivery và hợp đồng store.
-- `tests`, `scripts`, `deploy`, `docs`: test, seed, benchmark, cấu hình và kịch bản.
+Để bản cài hiện có tiếp tục dùng đúng Android sandbox và lịch sử SQLite, `applicationId` cũ `edu.student.plannerds01` cùng tên file cục bộ `ds01-chat.db` được giữ lại như định danh tương thích. Đây chỉ là tên kỹ thuật cũ, không kéo theo mã hoặc dependency DS01. Hai cột SQLite cũ `peer_id` được tự đổi sang `user_id` khi app mở.
 
-Chi tiết luồng phụ thuộc của [DS01](docs/architecture.md#kiến-trúc-mã-ds01) và [mobile](docs/architecture.md#kiến-trúc-mã-mobile) nằm trong tài liệu kiến trúc.
+## Cấu trúc repository
+
+```text
+src/
+  api/       REST API, schema Mongoose, ACL, chat persistence
+  mobile/    màn hình, component, hook, service API/SQLite
+scripts/     seed, migration và kiểm tra tích hợp
+tests/       test tự động
+docs/        kiến trúc, nghiệp vụ, giao thức và kịch bản demo
+deploy/      Mongo local, biến môi trường Internet và Caddy mẫu
+```
+
+Tài liệu chính:
+
+- [Kiến trúc](docs/architecture.md)
+- [Chat lưu và giao offline](docs/direct-chat.md)
+- [Dự án phân cấp và phân quyền](docs/hierarchical-projects.md)
+- [Giao thức REST chat](docs/protocol.md)
+- [Kế hoạch kiểm thử](docs/test-plan.md)
+- [Phân công và dàn ý báo cáo](docs/team-and-report.md)
+
+## Triển khai API tùy chọn
+
+Ứng dụng không bắt buộc deploy khi phát triển local. Nếu cài APK cho máy ở mạng khác, API phải có URL HTTPS truy cập được và MongoDB phải nằm ở nơi API truy cập được. Mẫu cấu hình ở `deploy/internet.env.example` và `deploy/Caddyfile.example`.
+
+Không đưa `MONGO_URL` hoặc `JWT_SECRET` vào biến `EXPO_PUBLIC_*`; mọi biến Expo public đều nằm trong bundle ứng dụng.
 
 ## Giới hạn hiện tại
 
-Nhóm dự án và quyền thành viên lưu MongoDB; restart signaling nạp lại nhóm với ID đã lưu. Nhóm demo web tự tạo và sổ secret Peer ID demo vẫn ở RAM nên phải tạo lại sau restart. Lịch sử chat chỉ nằm ở SQLite trên Android hoặc localStorage trên web, không gửi lại tin cho peer offline. Relay không lưu tin. Chat nhóm cần signaling/API đang hoạt động để xác minh quyền; DIRECT vẫn gửi body qua DataChannel. Hệ thống không thu hồi tin đã lưu trên thiết bị và không thể cưỡng chế phần mềm P2P cố ý bỏ kiểm tra. Phân cấp hiện có hai tầng và một Trưởng phòng/dự án con, chưa có chuyển Giám đốc hoặc xóa vĩnh viễn dự án. Cấu hình local cho phép HTTP cleartext; Internet dùng HTTPS/WSS. Không có thanh toán, TURN, push server hoặc bảo đảm phân tán qua nhiều instance signaling. Các luồng mới vẫn cần chạy Mongo thật và kiểm tra Android theo test plan.
+- Chat đồng bộ bằng polling khi app đang mở; chưa có FCM/Expo Push hoặc background worker đảm bảo khi app bị hệ điều hành đóng.
+- Nội dung chat chưa mã hóa đầu cuối; API/MongoDB có thể đọc dữ liệu.
+- Attachment lưu trong MongoDB và giới hạn 512 KiB/tệp, tối đa 3 tệp/lần.
+- Xóa hội thoại chỉ ẩn/xóa phía người thao tác; không thu hồi lịch sử của người còn lại.
+- Cần kiểm chứng thủ công trên hai Android/emulator và Atlas thật; test tự động không thay thế bằng chứng thiết bị.
+
+## Hướng phát triển
+
+- Tích hợp Google Calendar bằng OAuth thật, đồng bộ có khóa chống trùng và xử lý xung đột. Hiện repository **không chứa SDK, credential hoặc mã đồng bộ Google Calendar**.
+- Push notification/background sync cho chat và thông báo dự án.
+- Object storage cho ảnh/tệp lớn thay vì lưu bytes trong MongoDB.
+- Mã hóa đầu cuối, thu hồi/chỉnh sửa tin nhắn, tìm kiếm toàn văn và phân trang lịch sử.
+
+Không tuyên bố các mục hướng phát triển đã hoạt động cho đến khi có credential, thiết bị và log kiểm chứng thật.

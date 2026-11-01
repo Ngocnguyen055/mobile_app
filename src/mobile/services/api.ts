@@ -1,6 +1,9 @@
 // Mobile API client and transport types.
 import * as SecureStore from "expo-secure-store";
-import type { ChatAttachment } from "@ds01/shared";
+import type {
+  ChatAttachment,
+  StoredMessage,
+} from "../domain/chat.ts";
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:4000";
 let token = "";
@@ -106,8 +109,73 @@ export async function uploadChatAttachments(
     body: form,
   });
 }
+export async function uploadGroupChatAttachments(
+  groupId: string,
+  files: ChatUploadFile[],
+): Promise<ChatAttachment[]> {
+  const form = new FormData();
+  form.append("groupId", groupId);
+  for (const file of files)
+    form.append("files", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || "application/octet-stream",
+    } as unknown as Blob);
+  return api<ChatAttachment[]>("/chat/attachments", {
+    method: "POST",
+    body: form,
+  });
+}
 export const chatAttachmentUrl = (attachmentId: string) =>
   `${API_URL}/chat/attachments/${encodeURIComponent(attachmentId)}`;
+export type PersistedChatInput = {
+  messageId: string;
+  sessionId: string;
+  timestamp: number;
+  sequence: number;
+  body: string;
+  attachmentIds: string[];
+};
+export async function persistDirectChatMessage(
+  receiverId: string,
+  input: PersistedChatInput,
+) {
+  return api<StoredMessage>(
+    "/chat/messages/direct",
+    json("POST", { ...input, receiverId }),
+  );
+}
+export async function persistGroupChatMessage(
+  groupId: string,
+  input: PersistedChatInput,
+) {
+  return api<StoredMessage[]>(
+    "/chat/messages/group",
+    json("POST", { ...input, groupId }),
+  );
+}
+export type ChatSyncPage = {
+  items: StoredMessage[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+export async function syncStoredChatMessages(cursor?: string | null) {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return api<ChatSyncPage>(`/chat/messages/sync${query}`);
+}
+export async function markStoredChatMessagesRead(messageIds: string[]) {
+  if (!messageIds.length) return { updated: 0 };
+  return api<{ updated: number }>(
+    "/chat/messages/read",
+    json("POST", { messageIds }),
+  );
+}
+export async function deleteStoredDirectConversation(userId: string) {
+  return api<{ hidden: number }>(
+    `/chat/conversations/direct/${encodeURIComponent(userId)}`,
+    json("DELETE"),
+  );
+}
 export type ProjectSummary = { _id: string; name: string };
 export type Project = {
   _id: string;

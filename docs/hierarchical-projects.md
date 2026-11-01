@@ -31,7 +31,7 @@ Mục **Thành viên** luôn xếp Giám đốc trước, tiếp theo Trưởng 
 4. Trưởng phòng đăng nhập tài khoản của mình để tạo, phân công và sửa task trong dự án con quản lý. Nhân viên thấy task nhưng chỉ đổi trạng thái task của mình.
 5. **Tiến độ** có tổng số hoàn thành / sắp quá hạn / quá hạn. Nút `▾` bên phải thanh của từng người mở danh sách task: vòng tròn xám = Chưa làm, vòng tròn nét đứt vàng = Đang làm, tích xanh = Hoàn thành, dấu × đỏ = Quá hạn. Tổng quan của dự án tổng chỉ gộp các dự án con mà người xem được phép truy cập.
 6. **Thảo luận** để đăng bài, đính kèm tệp / ảnh, bình luận, sửa nội dung của mình và quản lý bài vi phạm trong phạm vi quyền. Khi mở bình luận, danh sách có chiều cao giới hạn và thanh cuộn riêng; vuốt trong vùng này để đọc tiếp, ô nhập nằm bên dưới. Mỗi bài tối đa 3 tệp, mỗi tệp 512 KiB. Tab Tài liệu được bỏ; tệp cũ còn tải được ở cuối Thảo luận.
-7. **Chat** tự lấy nhóm của dự án. Không tạo nhóm hoặc sửa danh sách thành viên riêng từ Android. Khởi động API → signaling → relay để chat hoạt động. Trạng thái online và DIRECT / RELAY vẫn đến từ peer engine.
+7. **Chat** tự lấy nhóm của dự án. Không tạo nhóm hoặc sửa danh sách thành viên riêng từ Android. API kiểm tra membership hiện hành, lưu MongoDB và đồng bộ lại cho thành viên khi họ mở app.
 8. Bấm **🔔 Thông báo** trên header để mở hộp thư, làm mới, đánh dấu đã đọc và mở dự án liên quan.
 
 Menu dự án là drawer dọc mở bằng `☰`; header dự án nằm ngoài vùng cuộn. Lịch chính tiếp tục mở sau đăng nhập và giữ bộ lọc **Tất cả / Cá nhân / Dự án**. Trong lịch dự án không có nút tạo sự kiện / task; quyền sửa mục đã có được kiểm tra theo dự án. Lịch cá nhân không bị ảnh hưởng bởi vai trò dự án.
@@ -41,17 +41,17 @@ Menu dự án là drawer dọc mở bằng `☰`; header dự án nằm ngoài v
 - Xóa khỏi tổng sẽ xóa khỏi các dự án con liên quan. Xóa khỏi một dự án con không xóa khỏi tổng hoặc các dự án con khác.
 - Nếu người bị xóa là Trưởng phòng, Giám đốc phải chọn người thay thế cho từng dự án con bị ảnh hưởng. Trưởng phòng không tự bổ nhiệm người kế nhiệm.
 - Mặc định task chuyển thành chưa phân công. Có thể chuyển toàn bộ task sang một người; người nhận phải thuộc **mọi dự án bị ảnh hưởng**. Nếu không đáp ứng, API từ chối toàn bộ thao tác, không xóa một phần. Giao diện không tự thêm người nhận task vào dự án khác.
-- Membership, manager, phân công task và phiên bản nhóm chat được cập nhật trong cùng transaction. Quyền đọc dữ liệu dự án bị thu hồi. Signaling phát danh sách mới sau đồng bộ; peer và relay kiểm tra quyền mới khi gửi / nhận tin nhóm, kể cả một DataChannel đã mở từ trước.
-- SQLite của thiết bị bị loại vẫn giữ lịch sử trước đó. Không xóa hoặc gọi lại tin đã nhận. Cơ chế thu hồi áp dụng cho API và client tuân thủ giao thức; phần mềm P2P bị sửa để cố ý bỏ kiểm tra không thể được máy chủ ngăn gửi byte trực tiếp. Không giao tin offline.
+- Membership, manager, phân công task và phiên bản nhóm chat được cập nhật trong cùng transaction. Quyền đọc dữ liệu dự án bị thu hồi; API kiểm tra quyền mới ở mỗi lần gửi, sync và tải tệp nhóm.
+- SQLite của thiết bị bị loại vẫn giữ lịch sử trước đó. API không trả tin nhóm mới sau khi membership bị thu hồi; delivery queued tới thành viên đã bị loại chuyển thất bại ở phía sender. Không xóa hoặc gọi lại tin đã nhận.
 - Lưu trữ dự án tổng lưu trữ mọi dự án con. Dự án lưu trữ vẫn đọc được nhưng không sửa task, lịch, thành viên, nguồn lực, bài, bình luận hoặc gửi chat mới. Khôi phục tổng có lựa chọn khôi phục tất cả con hoặc giữ con lưu trữ. Trưởng phòng không khôi phục con khi tổng còn lưu trữ. Chưa có xóa vĩnh viễn dự án.
 
 **Quá hạn** là trạng thái hiển thị tính từ `status != done` và `dueAt < hiện tại`. API lưu trạng thái nghiệp vụ `todo / doing / done` và trả `effectiveStatus`; không cho đặt `overdue` bằng tay. Task hoàn thành không đổi thành quá hạn. Tiến độ tính lại khi tải dữ liệu; Android tính nhãn theo giờ thiết bị nên cần kiểm tra giờ các máy.
 
 ## Chat và thông báo
 
-`Project.chatGroupId` là UUID ổn định lưu MongoDB, có ngay khi tạo dự án. `chatRevision` tăng khi đổi membership / manager / archive. Nhóm dự án tổng do Giám đốc quản lý; nhóm con do Trưởng phòng quản lý. Signaling đọc danh sách từ API nội bộ khi đăng ký, khi client gọi `project:group` và khi kiểm tra quyền; poll khoảng 2 giây để cập nhật giao diện. Android tải lại dữ liệu dự án khoảng 30 giây khi đang xem hoặc sau thao tác ghi.
+`Project.chatGroupId` là UUID ổn định lưu MongoDB, có ngay khi tạo dự án. `chatRevision` tăng khi đổi membership / manager / archive. Nhóm dự án tổng do Giám đốc quản lý; nhóm con do Trưởng phòng quản lý. Android tải lại dữ liệu dự án định kỳ khi đang xem hoặc sau thao tác ghi.
 
-`project:group {projectId}` trả nhóm hiện tại. `group:authorize {groupId, otherPeerId}` kiểm tra cả hai peer còn trong nhóm và dự án chưa lưu trữ. PeerClient kiểm tra trước khi gửi / nhận cả text và ACK; relay cũng kiểm tra trước chuyển tiếp. Các lệnh này không mang nội dung chat. **Chat nhóm cần signaling và API còn hoạt động để kiểm tra quyền, kể cả khi DIRECT đã mở**; khi không kiểm tra được thì từ chối tin mới. Restart signaling vẫn lấy lại đúng nhóm dự án từ MongoDB. Nhóm demo web tự tạo bằng `group:create` tiếp tục nằm trong RAM và mất sau restart. Chat cá nhân 1:1 không đổi giao thức và không phụ thuộc `groupId`.
+Mobile gửi nhóm qua `POST /chat/messages/group`; API đọc membership hiện hành, từ chối dự án lưu trữ và fan-out một trạng thái delivery cho từng người nhận. `/chat/messages/sync` kiểm tra lại membership trước khi trả tin. Ứng dụng không hiển thị presence online/offline vì không còn dịch vụ presence riêng.
 
 Collection `notifications` là **hộp thư trong ứng dụng**, chưa có push server. Không gửi cho actor. Bài mới thông báo thành viên đúng dự án. Bình luận mới thông báo tác giả bài, người đã bình luận và user được nhắc bằng `@[userId]`, luôn giới hạn trong membership; Android chưa có bộ chọn mention. Người đã bị loại không đọc được thông báo của dự án cũ; thông báo bài bị ẩn không lộ tiêu đề cho người không được xem.
 
@@ -88,9 +88,9 @@ Lỗi thường gặp: 400 payload sai, 403 ngoài quyền, 404 không tồn t�
 
 Transaction nhiều collection cần **MongoDB replica set**. Atlas dùng được với URI hiện tại, không đổi sang Mongo khác. Local dùng Compose đã cấu hình replica set `rs0`; URI mẫu có `?replicaSet=rs0`. Docker vẫn là tùy chọn.
 
-API / signaling / relay dùng cùng `PEER_SECRET`. Signaling cần `API_INTERNAL_URL=http://127.0.0.1:4000`, relay cần `SIGNAL_INTERNAL_URL=http://127.0.0.1:4001` khi chạy cùng máy. Caddy mẫu chặn `/internal/*` từ Internet; không đưa secret vào `EXPO_PUBLIC_*` hoặc `VITE_*`.
+API dùng `JWT_SECRET` ở server. Không đưa secret hoặc `MONGO_URL` vào biến `EXPO_PUBLIC_*`, vì mọi biến public được đóng gói vào ứng dụng.
 
-Với database cũ: dừng API / signaling / relay, sao lưu database rồi chạy tại thư mục gốc:
+Với database cũ: dừng API, sao lưu database rồi chạy tại thư mục gốc:
 
 ```powershell
 npm.cmd run migrate:projects
@@ -104,6 +104,6 @@ Kiểm tra tích hợp riêng bằng `npm.cmd run test:hierarchy-api`: script t�
 
 ## Trạng thái kiểm chứng
 
-Các test tự động kiểm tra ACL, phạm vi manager, transaction/session, thay manager, version conflict, archive cascade, post/comment/file permissions, inbox scope, task ownership và đồng bộ/thu hồi nhóm qua Socket.IO. Database ở các test này được mock; DataChannel nhận tin sau thu hồi cũng được mô phỏng. Chạy Android export chỉ kiểm tra đóng gói JavaScript, không chứng minh UI hoặc chức năng trên thiết bị.
+Các test tự động kiểm tra ACL, phạm vi manager, transaction/session, thay manager, version conflict, archive cascade, post/comment/file permissions, inbox scope, task ownership và thu hồi quyền chat nhóm qua REST API. Một phần database trong unit test được mock. Chạy Android export chỉ kiểm tra đóng gói JavaScript, không chứng minh UI hoặc chức năng trên thiết bị.
 
-**Chưa chạy migration hoặc script hierarchy trên Atlas trong lần triển khai này**: lệnh thử Atlas bị chặn trước khi thực thi do cơ chế duyệt tự động hết quota. Cần nhóm chạy script trên DB thử nghiệm, kiểm tra bằng ba tài khoản trên Android và lưu ảnh/log thật. DIRECT WebRTC thật, hai mạng, notification Android và Google OAuth vẫn cần kiểm chứng riêng. Xem [test-plan.md](test-plan.md).
+Nhóm vẫn cần chạy migration/script hierarchy trên database thử nghiệm, kiểm tra bằng ba tài khoản trên Android và lưu ảnh/log thật. Notification Android cần được xác nhận trên thiết bị. Google Calendar chỉ là hướng phát triển, không phải chức năng đang kiểm thử. Xem [test-plan.md](test-plan.md).

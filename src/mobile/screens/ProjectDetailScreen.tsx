@@ -191,24 +191,22 @@ export default function ProjectDetailScreen({
     return (
       <ProjectChatTab
         group={chatController.group}
-        onlineUserIds={chatController.online}
         members={members}
         currentUserId={currentUserId}
         messages={chatController.messages}
-        modes={chatController.modes}
         messageBody={chatController.messageBody}
         logs={chatController.logs}
-        forceRelay={chatController.forceRelay}
+        uploading={chatController.groupUploading}
         readOnly={project.archived}
         onRefreshGroup={() => runAction(chatController.ensureGroup)}
-        onToggleForceRelay={() => {
-          const forceRelay = !chatController.forceRelay;
-          chatController.setForceRelay(forceRelay);
-          if (chatController.peer.current)
-            chatController.peer.current.forceRelay = forceRelay;
-        }}
         onMessageBodyChange={chatController.setMessageBody}
         onSend={() => runAction(chatController.sendChat)}
+        onAttach={() =>
+          runAction(chatController.pickAndSendGroupAttachments)
+        }
+        onDownloadAttachment={(attachment) =>
+          runAction(() => chatController.downloadChatAttachment(attachment))
+        }
       />
     );
   }

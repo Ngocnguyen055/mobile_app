@@ -10,18 +10,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { z } from "zod";
-import { User, Project, Task, Event } from "./models.ts";
+import { User, Task, Event } from "./models.ts";
 import { listContactsForUser } from "./contactService.ts";
-import {
-  directChatAuthorizationResponse,
-  installDirectChatRoutes,
-} from "./directChatRoutes.ts";
+import { installDirectChatRoutes } from "./directChatRoutes.ts";
+import { installChatPersistenceRoutes } from "./chatPersistenceRoutes.ts";
 import {
   projectAccess,
   assertWritable,
   accessibleProjectIds,
   effectiveTaskStatus,
-  getProjectChatGroup,
   HttpError,
   withWritableProject,
   lockWritableProject,
@@ -38,14 +35,9 @@ import {
 loadEnv({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 if (
   process.env.NODE_ENV === "production" &&
-  (!process.env.JWT_SECRET ||
-    process.env.JWT_SECRET.length < 32 ||
-    !process.env.PEER_SECRET ||
-    process.env.PEER_SECRET.length < 32)
+  (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)
 )
-  throw new Error(
-    "JWT_SECRET and PEER_SECRET must each be at least 32 characters in production",
-  );
+  throw new Error("JWT_SECRET must be at least 32 characters in production");
 const secret = process.env.JWT_SECRET || "local-development-only-secret";
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const date = z.string().datetime({ offset: true });
@@ -202,52 +194,6 @@ export function createApi() {
   app.get("/health", (_req, res) =>
     res.json({ service: "api", mongo: mongoose.connection.readyState === 1 }),
   );
-  const internalAuth = (req: Request, res: Response, next: NextFunction) => {
-    if (
-      req.header("x-peer-secret") !==
-      (process.env.PEER_SECRET || "local-development-only-secret")
-    )
-      return res.sendStatus(403);
-    next();
-  };
-  app.get("/internal/chat-groups", internalAuth, async (req, res) => {
-    const userId = check(objectId, req.query.userId);
-    const ids = await accessibleProjectIds(userId);
-    const rows = await Project.find({
-      _id: { $in: ids },
-      chatGroupId: { $exists: true },
-    });
-    const groups = await Promise.all(
-      rows.map((p) => getProjectChatGroup(p.chatGroupId!)),
-    );
-    return res.json(groups.filter((group) => group?.members.includes(userId)));
-  });
-  app.get("/internal/chat-groups/:groupId", internalAuth, async (req, res) => {
-    const group = await getProjectChatGroup(
-      check(z.string().uuid(), req.params.groupId),
-    );
-    return group ? res.json(group) : res.sendStatus(404);
-  });
-  app.get(
-    "/internal/projects/:projectId/chat-group",
-    internalAuth,
-    async (req, res) => {
-      const project = await Project.findById(
-        check(objectId, req.params.projectId),
-      );
-      if (!project?.chatGroupId) return res.sendStatus(404);
-      return res.json(await getProjectChatGroup(project.chatGroupId));
-    },
-  );
-  app.get("/internal/direct-chat/authorize", internalAuth, async (req, res) => {
-    const input = check(
-      z.object({ senderId: objectId, receiverId: objectId }).strict(),
-      req.query,
-    );
-    return res.json(
-      await directChatAuthorizationResponse(input.senderId, input.receiverId),
-    );
-  });
   app.post("/auth/register", async (req, res) => {
     const data = check(
       z.object({
@@ -289,6 +235,7 @@ export function createApi() {
   installDiscussionRoutes(app);
   installNotificationRoutes(app);
   installDirectChatRoutes(app);
+  installChatPersistenceRoutes(app);
   app.get("/me", async (req, res) => {
     const user = await User.findById(req.userId).select("name email");
     res.json(user);
