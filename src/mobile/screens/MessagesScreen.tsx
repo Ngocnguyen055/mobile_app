@@ -171,9 +171,7 @@ function MessagesScreen({
               <View style={styles.contactText}>
                 <View style={styles.contactTitleRow}>
                   <Text style={styles.strong}>{contact.name}</Text>
-                  <Text style={styles.muted}>
-                    {blocked ? "Đã chặn" : "Máy chủ"}
-                  </Text>
+                  {blocked && <Text style={styles.muted}>Đã chặn</Text>}
                 </View>
                 <Text style={styles.muted}>{contact.email}</Text>
                 <Text numberOfLines={1} style={styles.contactPreview}>
@@ -210,11 +208,11 @@ function MessagesScreen({
   return (
     <>
       <View style={styles.directStatusCard}>
-        <Text style={styles.muted}>
-          {contactBlocked
-            ? "Bạn đã chặn người dùng này. Tin nhắn mới sẽ bị từ chối."
-            : "Tin nhắn được lưu trên máy chủ và giao khi người nhận mở ứng dụng."}
-        </Text>
+        {contactBlocked && (
+          <Text style={styles.muted}>
+            Bạn đã chặn người dùng này. Tin nhắn mới sẽ bị từ chối.
+          </Text>
+        )}
         <View style={styles.wrap}>
           <Button
             label="Làm mới tin nhắn"
@@ -295,7 +293,7 @@ function MessagesScreen({
                 <Text style={styles.messageBody}>{row.message.body}</Text>
               )}
               <Text style={styles.messageMeta}>
-                {formatViDateTime(row.message.timestamp)} · Máy chủ ·{" "}
+                {formatViDateTime(row.message.timestamp)} ·{" "}
                 {directMessageStatusLabel(row.status, outgoing)}
               </Text>
             </View>

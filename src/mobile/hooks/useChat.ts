@@ -31,6 +31,7 @@ import {
   type User,
 } from "../services/api.ts";
 import { canSendDirect } from "../domain/directChatPolicy.ts";
+import { selectedAttachmentValidationError } from "../utils/attachments.ts";
 import { MobileStore } from "../services/local.ts";
 
 type UseChatOptions = {
@@ -553,10 +554,14 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       type: "*/*",
     });
     if (result.canceled) return;
-    if (result.assets.length > 3)
-      throw new Error("Mỗi lần gửi tối đa 3 ảnh hoặc tệp.");
-    if (result.assets.some((file) => (file.size || 0) > 512 * 1024))
-      throw new Error("Mỗi ảnh hoặc tệp tối đa 512 KiB.");
+    const validationError = await selectedAttachmentValidationError(
+      0,
+      result.assets,
+    );
+    if (validationError) {
+      Alert.alert("Không thể gửi tệp", validationError);
+      return;
+    }
     setDirectUploading(true);
     try {
       const attachments = await uploadChatAttachments(
@@ -670,10 +675,14 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       type: "*/*",
     });
     if (result.canceled) return;
-    if (result.assets.length > 3)
-      throw new Error("Mỗi lần gửi tối đa 3 ảnh hoặc tệp.");
-    if (result.assets.some((file) => (file.size || 0) > 512 * 1024))
-      throw new Error("Mỗi ảnh hoặc tệp tối đa 512 KiB.");
+    const validationError = await selectedAttachmentValidationError(
+      0,
+      result.assets,
+    );
+    if (validationError) {
+      Alert.alert("Không thể gửi tệp", validationError);
+      return;
+    }
     setGroupUploading(true);
     try {
       const attachments = await uploadGroupChatAttachments(

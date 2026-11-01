@@ -195,7 +195,6 @@ export default function ProjectDetailScreen({
         currentUserId={currentUserId}
         messages={chatController.messages}
         messageBody={chatController.messageBody}
-        logs={chatController.logs}
         uploading={chatController.groupUploading}
         readOnly={project.archived}
         onRefreshGroup={() => runAction(chatController.ensureGroup)}

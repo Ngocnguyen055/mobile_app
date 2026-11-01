@@ -109,9 +109,9 @@ describe("mobile direct-chat policy", () => {
   it("maps delivery states and validates the composer", () => {
     expect(directMessageStatusLabel("pending", true)).toBe("Đang gửi");
     expect(directMessageStatusLabel("queued", true)).toBe(
-      "Đã lưu, chờ người nhận",
+      "Đã gửi",
     );
-    expect(directMessageStatusLabel("delivered", true)).toBe("Đã giao");
+    expect(directMessageStatusLabel("delivered", true)).toBe("Đã nhận");
     expect(directMessageStatusLabel("read", true)).toBe("Đã xem");
     expect(directMessageStatusLabel("failed", true)).toBe("Gửi thất bại");
     expect(directMessageStatusLabel("received", false)).toBe("Đã nhận");

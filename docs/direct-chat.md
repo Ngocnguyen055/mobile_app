@@ -100,7 +100,7 @@ Xóa hội thoại thêm user hiện tại vào `hiddenFor` trên các tin direc
 
 1. Chạy MongoDB, API và Metro/development client.
 2. Đăng nhập Bình trên máy A, giữ An chưa mở app.
-3. Bình tìm `an@example.test`, gửi text và ảnh. Bubble phải hiện `Đã lưu, chờ người nhận` dù An offline.
+3. Bình tìm `an@example.test`, gửi text và ảnh. Bubble phải hiện `Đã gửi` dù An chưa mở ứng dụng.
 4. Mở app và đăng nhập An trên máy B. Trong tối đa vài giây, hội thoại/tin phải xuất hiện; phía Bình chuyển sang trạng thái đã giao sau lần sync.
 5. An mở hội thoại; phía Bình chuyển `Đã xem` sau lần sync.
 6. Tắt API, gửi một tin text từ Bình. Tin phải còn trong SQLite/outbox. Mở lại API; tin tự ghi server và được giao khi An sync.

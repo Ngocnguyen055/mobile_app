@@ -21,6 +21,7 @@ import {
 } from "../../services/api.ts";
 import { formatViDateTime } from "../../utils/calendar.ts";
 import { idOf } from "../../domain/projectPolicy.ts";
+import { selectedAttachmentValidationError } from "../../utils/attachments.ts";
 import { styles as s } from "../../styles/discussion.ts";
 
 type Props = {
@@ -125,10 +126,15 @@ export default function DiscussionPanel({
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
+    const validationError = await selectedAttachmentValidationError(
+      files.length,
+      result.assets,
+    );
+    if (validationError) {
+      Alert.alert("Không thể đính kèm tệp", validationError);
+      return;
+    }
     const next = [...files, ...result.assets];
-    if (next.length > 3) throw new Error("Mỗi bài tối đa 3 tệp.");
-    if (next.some((file) => (file.size || 0) > 512 * 1024))
-      throw new Error("Mỗi tệp tối đa 512 KiB.");
     setFiles(next);
   };
   const savePost = async () => {
@@ -178,10 +184,6 @@ export default function DiscussionPanel({
   return (
     <>
       <Text style={s.heading}>Bảng thảo luận</Text>
-      <Text style={s.muted}>
-        Bài đăng và bình luận lưu trên máy chủ. Tệp / ảnh đính kèm tối đa 3 tệp,
-        mỗi tệp 512 KiB.
-      </Text>
       {writable && (
         <Pressable
           accessibilityRole="button"
@@ -283,9 +285,6 @@ export default function DiscussionPanel({
                   <Text style={s.attachmentIcon}>＋</Text>
                   <View style={s.attachmentCopy}>
                     <Text style={s.attachmentTitle}>Đính kèm tệp / ảnh</Text>
-                    <Text style={s.attachmentHint}>
-                      Tối đa 3 tệp, mỗi tệp 512 KiB
-                    </Text>
                   </View>
                 </Pressable>
               )}

@@ -50,7 +50,7 @@ function DirectComposer({
         placeholder={
           blocked
             ? "Bạn đã chặn người dùng này"
-            : `Nhắn ${contact.name} · tin được lưu trên máy chủ`
+            : "Nhắn tin"
         }
         placeholderTextColor="#64748b"
         maxLength={4000}

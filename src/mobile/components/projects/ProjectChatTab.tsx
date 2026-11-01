@@ -17,9 +17,9 @@ import TextField from "../ui/TextField.tsx";
 
 const statusLabel = {
   pending: "Đang gửi",
-  queued: "Chờ người nhận",
+  queued: "Đã gửi",
   sent: "Đã gửi",
-  delivered: "Đã giao",
+  delivered: "Đã nhận",
   read: "Đã xem",
   failed: "Không giao được",
   received: "Đã nhận",
@@ -58,9 +58,9 @@ function groupDeliveryLabel(rows: StoredMessage[], outgoing: boolean) {
   ).length;
   const failed = rows.filter((row) => row.status === "failed").length;
   if (read === total) return `Đã xem ${read}/${total}`;
-  if (delivered === total) return `Đã giao ${delivered}/${total}`;
+  if (delivered === total) return `Đã nhận ${delivered}/${total}`;
   if (failed === total) return "Không giao được";
-  return `${delivered}/${total} đã giao${failed ? ` · ${failed} lỗi` : ""}`;
+  return `${delivered}/${total} đã nhận${failed ? ` · ${failed} lỗi` : ""}`;
 }
 
 type ProjectChatTabProps = {
@@ -69,7 +69,6 @@ type ProjectChatTabProps = {
   currentUserId: string;
   messages: StoredMessage[];
   messageBody: string;
-  logs: string[];
   uploading: boolean;
   readOnly: boolean;
   onRefreshGroup: () => void;
@@ -85,7 +84,6 @@ function ProjectChatTab({
   currentUserId,
   messages,
   messageBody,
-  logs,
   uploading,
   readOnly,
   onRefreshGroup,
@@ -103,12 +101,7 @@ function ProjectChatTab({
     <>
       <Text style={styles.heading}>Chat nhóm dự án</Text>
       <Text>
-        Nhóm: {group?.id || "Đang đồng bộ"} · thành viên{" "}
-        {group?.members.length || 0}
-      </Text>
-      <Text style={styles.muted}>
-        Nhóm chat tự đồng bộ với thành viên dự án. Tin được lưu trong MongoDB;
-        thành viên offline nhận khi mở ứng dụng lại.
+        {group ? `${group.members.length} thành viên` : "Đang tải nhóm…"}
       </Text>
       <Button label="Làm mới nhóm" onPress={onRefreshGroup} secondary />
       {group?.members.map((id) => (
@@ -129,7 +122,7 @@ function ProjectChatTab({
                 ? "Tôi"
                 : members.find((member) => member._id === row.message.senderId)
                     ?.name || row.message.senderId}{" "}
-              · Máy chủ · {groupDeliveryLabel(rows, outgoing)}
+              · {groupDeliveryLabel(rows, outgoing)}
             </Text>
             {(row.message.attachments || []).map((attachment) =>
               attachment.mime.startsWith("image/") ? (
@@ -184,12 +177,6 @@ function ProjectChatTab({
           disabled={!group || !messageBody.trim()}
         />
       )}
-      <Text style={styles.heading}>Trạng thái đồng bộ</Text>
-      {logs.slice(0, 20).map((line, index) => (
-        <Text key={index} style={styles.muted}>
-          {line}
-        </Text>
-      ))}
     </>
   );
 }

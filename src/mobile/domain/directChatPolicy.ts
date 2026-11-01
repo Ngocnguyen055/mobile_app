@@ -25,9 +25,9 @@ export function directMessagesForContact(
 
 const outgoingStatusLabels: Record<MessageStatus, string> = {
   pending: "Đang gửi",
-  queued: "Đã lưu, chờ người nhận",
+  queued: "Đã gửi",
   sent: "Đã gửi",
-  delivered: "Đã giao",
+  delivered: "Đã nhận",
   read: "Đã xem",
   failed: "Gửi thất bại",
   received: "Đã nhận",

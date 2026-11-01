@@ -42,9 +42,9 @@ Không cần signaling, relay, web peer hoặc server DS01 cho demo repository n
 
 1. Trên thiết bị A, Bình mở **Tin nhắn**, tìm `an@example.test` và mở hội thoại.
 2. Giữ thiết bị B/An chưa mở app. Bình gửi text và một tệp nhỏ.
-3. Chỉ ra trạng thái `Đã lưu, chờ người nhận`; đây là lưu server, không phải online P2P.
+3. Chỉ ra trạng thái `Đã gửi`; đây là tin đã được lưu để giao, không phải online P2P.
 4. Mở app trên thiết bị B và đăng nhập An. Chờ đồng bộ; tin phải xuất hiện.
-5. An mở hội thoại; thiết bị A làm mới/đồng bộ và thấy trạng thái Đã giao/Đã xem.
+5. An mở hội thoại; thiết bị A làm mới/đồng bộ và thấy trạng thái Đã nhận/Đã xem.
 6. Nhấn nút thông tin để xem ảnh/tệp đã gửi.
 7. Chặn Bình từ An; thử gửi mới và ghi lại lỗi. Bỏ chặn để tiếp tục.
 8. Nhấn giữ hội thoại ở danh sách để thử Xóa hoặc Chặn; giải thích xóa chỉ áp dụng phía hiện tại.

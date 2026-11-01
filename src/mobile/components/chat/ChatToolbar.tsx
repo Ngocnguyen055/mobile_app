@@ -33,7 +33,8 @@ function ChatToolbar({
             <View style={styles.contactText}>
               <Text style={styles.contextTitle}>{contact.name}</Text>
               <Text style={styles.contextSubtitle}>
-                {contact.email} · {blocked ? "Đã chặn" : "Chat qua máy chủ"}
+                {contact.email}
+                {blocked ? " · Đã chặn" : ""}
               </Text>
             </View>
           </View>
