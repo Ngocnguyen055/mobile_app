@@ -55,6 +55,18 @@ const projectMemberSchema = new Schema(
 );
 projectMemberSchema.index({ project: 1, user: 1 }, { unique: true });
 projectMemberSchema.index({ user: 1, project: 1 });
+const chatGroupSchema = new Schema(
+  {
+    groupId: { type: String, required: true, default: randomUUID },
+    project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    deletedAt: { type: Date, default: null },
+  },
+  { timestamps: true, collection: "chat_groups" },
+);
+chatGroupSchema.index({ groupId: 1 }, { unique: true });
+chatGroupSchema.index({ project: 1, deletedAt: 1, createdAt: 1 });
 const taskSchema = new Schema(
   {
     project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
@@ -234,6 +246,7 @@ export const ProjectMember = mongoose.model(
   "ProjectMember",
   projectMemberSchema,
 );
+export const ChatGroupRecord = mongoose.model("ChatGroup", chatGroupSchema);
 export const Task = mongoose.model("Task", taskSchema);
 export const Event = mongoose.model("Event", eventSchema);
 export const Discussion = mongoose.model("Discussion", discussionSchema);
