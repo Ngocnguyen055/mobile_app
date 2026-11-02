@@ -3,6 +3,7 @@ import {
   WEEKDAY_LABELS,
   buildMonthGrid,
   buildWeekDays,
+  buildYearMonths,
   dateKey,
   formatViCalendarTitle,
   formatViDate,
@@ -51,6 +52,7 @@ describe("Vietnamese calendar helpers", () => {
     expect(formatViMonth(date)).toBe("Tháng 9, 2026");
     expect(formatViCalendarTitle(date, "day")).toBe("26/09/2026");
     expect(formatViCalendarTitle(date, "month")).toBe("Tháng 9, 2026");
+    expect(formatViCalendarTitle(date, "year")).toBe("Năm 2026");
     expect(() => parseViDateTime("31/02/2026 08:00")).toThrow(
       "Ngày giờ không hợp lệ",
     );
@@ -89,5 +91,24 @@ describe("Vietnamese calendar helpers", () => {
         moveCalendarDate(parseViDateTime("01/01/2026 10:00"), "day", -1),
       ),
     ).toBe("31/12/2025");
+    expect(
+      formatViDate(
+        moveCalendarDate(parseViDateTime("29/02/2024 10:00"), "year", 1),
+      ),
+    ).toBe("28/02/2025");
+    expect(buildYearMonths(january31).map(dateKey)).toEqual([
+      "2026-01-01",
+      "2026-02-01",
+      "2026-03-01",
+      "2026-04-01",
+      "2026-05-01",
+      "2026-06-01",
+      "2026-07-01",
+      "2026-08-01",
+      "2026-09-01",
+      "2026-10-01",
+      "2026-11-01",
+      "2026-12-01",
+    ]);
   });
 });

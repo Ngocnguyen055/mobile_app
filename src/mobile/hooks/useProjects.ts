@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, json, type Project } from "../services/api.ts";
 import {
   projectPageCount,
+  type ProjectDateFilter,
   type ProjectOwnershipFilter,
 } from "../utils/projectList.ts";
 
@@ -19,6 +20,9 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
   const [projectSearch, setProjectSearch] = useState("");
   const [projectOwnershipFilter, setProjectOwnershipFilter] =
     useState<ProjectOwnershipFilter>("all");
+  const [projectDateFilter, setProjectDateFilter] =
+    useState<ProjectDateFilter>("all");
+  const [projectDateAnchor, setProjectDateAnchor] = useState("");
   const [projectCreateVisible, setProjectCreateVisible] = useState(false);
   const [projectCreating, setProjectCreating] = useState(false);
 
@@ -58,6 +62,8 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     setProjectPage(0);
     setProjectSearch("");
     setProjectOwnershipFilter("all");
+    setProjectDateFilter("all");
+    setProjectDateAnchor("");
     setProjectCreateVisible(false);
     setProjectCreating(false);
   };
@@ -74,6 +80,10 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     setProjectSearch,
     projectOwnershipFilter,
     setProjectOwnershipFilter,
+    projectDateFilter,
+    setProjectDateFilter,
+    projectDateAnchor,
+    setProjectDateAnchor,
     projectCreateVisible,
     setProjectCreateVisible,
     projectCreating,

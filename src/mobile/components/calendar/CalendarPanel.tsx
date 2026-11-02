@@ -33,6 +33,7 @@ import {
   WEEKDAY_LABELS,
   buildMonthGrid,
   buildWeekDays,
+  buildYearMonths,
   dateKey,
   formatViCalendarTitle,
   formatViDate,
@@ -120,6 +121,16 @@ function occursOn(event: CalendarEvent, day: Date) {
   return starts <= key && key <= ends;
 }
 
+function occursBetween(event: CalendarEvent, startKey: string, endKey: string) {
+  const starts = dateKey(new Date(event.startsAt));
+  const exclusiveEnd = Math.max(
+    new Date(event.endsAt).getTime() - 1,
+    new Date(event.startsAt).getTime(),
+  );
+  const ends = dateKey(new Date(exclusiveEnd));
+  return starts <= endKey && ends >= startKey;
+}
+
 export default function CalendarPanel({
   tasks,
   events,
@@ -173,11 +184,22 @@ export default function CalendarPanel({
   );
 
   const cells =
-    mode === "month"
-      ? buildMonthGrid(selectedDay)
-      : mode === "week"
-        ? buildWeekDays(selectedDay)
-        : [selectedDay];
+    mode === "year"
+      ? []
+      : mode === "month"
+        ? buildMonthGrid(selectedDay)
+        : mode === "week"
+          ? buildWeekDays(selectedDay)
+          : [selectedDay];
+  const yearMonths = buildYearMonths(selectedDay);
+  const selectedYear = dateKey(selectedDay).slice(0, 4);
+  const yearTasks = visibleTasks.filter(
+    (task) =>
+      task.dueAt && dateKey(new Date(task.dueAt)).startsWith(selectedYear),
+  );
+  const yearEvents = visibleEvents.filter((event) =>
+    occursBetween(event, `${selectedYear}-01-01`, `${selectedYear}-12-31`),
+  );
   const selectedTasks = visibleTasks.filter(
     (task) => task.dueAt && sameDay(new Date(task.dueAt), selectedDay),
   );
@@ -312,7 +334,7 @@ export default function CalendarPanel({
         </View>
       )}
       <View style={styles.modeRow}>
-        {(["day", "week", "month"] as CalendarMode[]).map((value) => (
+        {(["day", "week", "month", "year"] as CalendarMode[]).map((value) => (
           <Pressable
             key={value}
             onPress={() => setMode(value)}
@@ -321,7 +343,9 @@ export default function CalendarPanel({
             <Text
               style={mode === value ? styles.activeModeText : styles.modeText}
             >
-              {{ day: "Ngày", week: "Tuần", month: "Tháng" }[value]}
+              {{ day: "Ngày", week: "Tuần", month: "Tháng", year: "Năm" }[
+                value
+              ]}
             </Text>
           </Pressable>
         ))}
@@ -349,7 +373,7 @@ export default function CalendarPanel({
         )}
       </View>
 
-      {mode !== "day" && (
+      {(mode === "week" || mode === "month") && (
         <View style={styles.weekHeader}>
           {WEEKDAY_LABELS.map((label, index) => (
             <Text
@@ -361,8 +385,55 @@ export default function CalendarPanel({
           ))}
         </View>
       )}
-      <View style={styles.calendarGrid}>
-        {cells.map((day, index) => {
+      {mode === "year" ? (
+        <View style={styles.yearGrid}>
+          {yearMonths.map((month, index) => {
+            const monthKey = dateKey(month).slice(0, 7);
+            const taskItems = visibleTasks.filter(
+              (task) =>
+                task.dueAt &&
+                dateKey(new Date(task.dueAt)).startsWith(monthKey),
+            );
+            const eventItems = visibleEvents.filter((event) =>
+              occursBetween(event, `${monthKey}-01`, `${monthKey}-31`),
+            );
+            const currentMonth =
+              dateKey(new Date()).slice(0, 7) === monthKey;
+            return (
+              <Pressable
+                key={monthKey}
+                accessibilityRole="button"
+                accessibilityLabel={`Tháng ${index + 1}, ${taskItems.length} deadline, ${eventItems.length} sự kiện`}
+                onPress={() => {
+                  setSelectedDay(month);
+                  setMode("month");
+                }}
+                style={[
+                  styles.yearMonthCell,
+                  currentMonth && styles.yearCurrentMonth,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.yearMonthText,
+                    currentMonth && styles.yearCurrentMonthText,
+                  ]}
+                >
+                  Tháng {index + 1}
+                </Text>
+                <View style={styles.dotRow}>
+                  {!!taskItems.length && <Text style={styles.dot}>●</Text>}
+                  {!!eventItems.length && (
+                    <Text style={[styles.dot, styles.eventDot]}>●</Text>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={styles.calendarGrid}>
+          {cells.map((day, index) => {
           if (!day)
             return <View key={`empty-${index}`} style={styles.emptyDay} />;
           const taskItems = visibleTasks.filter(
@@ -408,21 +479,36 @@ export default function CalendarPanel({
               </View>
             </Pressable>
           );
-        })}
-      </View>
+          })}
+        </View>
+      )}
       <View style={styles.legend}>
         <Text style={styles.legendTask}>● Deadline</Text>
         <Text style={styles.legendEvent}>● Sự kiện</Text>
       </View>
 
-      <Text style={styles.selectedTitle}>{formatViDate(selectedDay)}</Text>
+      <Text style={styles.selectedTitle}>
+        {mode === "year"
+          ? `Tổng quan năm ${selectedYear}`
+          : formatViDate(selectedDay)}
+      </Text>
 
-      {!selectedTasks.length && !selectedEvents.length && (
+      {mode === "year" && (
+        <View style={styles.yearSummary}>
+          <Text style={styles.yearSummaryValue}>
+            {yearTasks.length} deadline · {yearEvents.length} sự kiện
+          </Text>
+          <Text style={styles.muted}>
+            Chọn một tháng để mở lịch chi tiết của tháng đó.
+          </Text>
+        </View>
+      )}
+      {mode !== "year" && !selectedTasks.length && !selectedEvents.length && (
         <View style={styles.emptyAgenda}>
           <Text style={styles.muted}>Chưa có lịch trong ngày này.</Text>
         </View>
       )}
-      {selectedTasks.map((task) => (
+      {mode !== "year" && selectedTasks.map((task) => (
         <View style={styles.card} key={`task-${task._id}`}>
           <View style={styles.badgeRow}>
             <Text style={styles.taskBadge}>TASK</Text>
@@ -455,7 +541,7 @@ export default function CalendarPanel({
           </View>
         </View>
       ))}
-      {selectedEvents.map((event) => (
+      {mode !== "year" && selectedEvents.map((event) => (
         <View style={styles.card} key={`event-${event._id}`}>
           <View style={styles.badgeRow}>
             <Text style={styles.eventBadge}>SỰ KIỆN</Text>

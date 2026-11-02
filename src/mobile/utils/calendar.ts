@@ -9,7 +9,7 @@ export const WEEKDAY_LABELS = [
   "CN",
 ] as const;
 
-export type CalendarMode = "day" | "week" | "month";
+export type CalendarMode = "day" | "week" | "month" | "year";
 export type DateInput = Date | string | number;
 
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
@@ -127,6 +127,7 @@ export function formatViMonth(input: DateInput) {
 }
 
 export function formatViCalendarTitle(input: DateInput, mode: CalendarMode) {
+  if (mode === "year") return `Năm ${vietnamParts(input).year}`;
   if (mode === "month") return formatViMonth(input);
   if (mode === "day") return formatViDate(input);
   const week = buildWeekDays(input);
@@ -203,6 +204,13 @@ export function buildWeekDays(input: DateInput): Date[] {
   });
 }
 
+export function buildYearMonths(input: DateInput): Date[] {
+  const { year } = vietnamParts(input);
+  return Array.from({ length: 12 }, (_, month) =>
+    vietnamDate(year, month + 1, 1),
+  );
+}
+
 export function moveCalendarDate(
   input: DateInput,
   mode: CalendarMode,
@@ -210,6 +218,16 @@ export function moveCalendarDate(
 ) {
   const source = asDate(input);
   const { year, month, day, hour, minute, second } = vietnamParts(source);
+  if (mode === "year")
+    return vietnamDate(
+      year + direction,
+      month,
+      Math.min(day, daysInMonth(year + direction, month)),
+      hour,
+      minute,
+      second,
+      source.getUTCMilliseconds(),
+    );
   if (mode === "month") {
     const target = new Date(Date.UTC(year, month - 1 + direction, 1));
     const targetYear = target.getUTCFullYear();

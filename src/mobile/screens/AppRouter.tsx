@@ -87,6 +87,8 @@ export default function AppRouter({
       currentUserId={user._id}
       search={projectsController.projectSearch}
       ownershipFilter={projectsController.projectOwnershipFilter}
+      dateFilter={projectsController.projectDateFilter}
+      dateAnchor={projectsController.projectDateAnchor}
       page={projectsController.projectPage}
       createVisible={projectsController.projectCreateVisible}
       creating={projectsController.projectCreating}
@@ -104,6 +106,11 @@ export default function AppRouter({
       }}
       onOwnershipFilterChange={(value) => {
         projectsController.setProjectOwnershipFilter(value);
+        projectsController.setProjectPage(0);
+      }}
+      onDateFilterChange={(filter, anchor) => {
+        projectsController.setProjectDateFilter(filter);
+        projectsController.setProjectDateAnchor(anchor);
         projectsController.setProjectPage(0);
       }}
       onPageChange={projectsController.setProjectPage}

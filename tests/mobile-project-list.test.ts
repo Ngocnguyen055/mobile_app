@@ -43,7 +43,7 @@ describe("mobile project list", () => {
     ]);
   });
 
-  it("shows five projects per page and clamps invalid pages", () => {
+  it("shows ten projects per page and clamps invalid pages", () => {
     const rows = Array.from({ length: 12 }, (_, index) =>
       project(
         String(index).padStart(24, "0"),
@@ -51,10 +51,10 @@ describe("mobile project list", () => {
       ),
     );
     const ordered = orderProjectsNewestFirst(rows);
-    expect(projectPageCount(ordered)).toBe(3);
-    expect(projectsForPage(ordered, 0).items).toHaveLength(5);
-    expect(projectsForPage(ordered, 1).items).toHaveLength(5);
-    expect(projectsForPage(ordered, 99)).toMatchObject({ page: 2 });
+    expect(projectPageCount(ordered)).toBe(2);
+    expect(projectsForPage(ordered, 0).items).toHaveLength(10);
+    expect(projectsForPage(ordered, 1).items).toHaveLength(2);
+    expect(projectsForPage(ordered, 99)).toMatchObject({ page: 1 });
     expect(projectsForPage(ordered, 99).items).toHaveLength(2);
   });
 });
