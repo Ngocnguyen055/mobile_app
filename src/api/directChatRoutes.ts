@@ -1,5 +1,4 @@
 import type { Express } from "express";
-import multer from "multer";
 import { z } from "zod";
 import {
   blockChatUser,
@@ -19,19 +18,24 @@ import {
 } from "./directChatService.ts";
 import { getProjectChatGroup, HttpError } from "./projectAccess.ts";
 import { hideQueuedMessagesFromBlockedUser } from "./chatPersistenceService.ts";
+import {
+  cleanupTemporaryUploads,
+  deleteGridFsFiles,
+  pipeGridFsFile,
+  removeTemporaryFiles,
+  temporaryUpload,
+  uploadTemporaryFile,
+} from "./gridFsStorage.ts";
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const searchInput = z
   .object({ email: z.string().trim().min(3).max(120) })
   .strict();
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: CHAT_ATTACHMENT_MAX_BYTES,
-    files: CHAT_ATTACHMENT_MAX_FILES,
-    fields: 2,
-    fieldSize: 200,
-  },
+const upload = temporaryUpload({
+  fileSize: CHAT_ATTACHMENT_MAX_BYTES,
+  files: CHAT_ATTACHMENT_MAX_FILES,
+  fields: 2,
+  fieldSize: 200,
 });
 
 function uploadedFiles(files: Express.Request["files"]) {
@@ -81,6 +85,7 @@ export function installDirectChatRoutes(app: Express) {
   app.post(
     "/chat/attachments",
     upload.array("files", CHAT_ATTACHMENT_MAX_FILES),
+    cleanupTemporaryUploads,
     async (req, res) => {
       const receiverResult = objectId.safeParse(req.body.receiverId);
       const groupResult = z.string().uuid().safeParse(req.body.groupId);
@@ -119,24 +124,43 @@ export function installDirectChatRoutes(app: Express) {
         };
       }
 
-      const attachments = await ChatAttachment.create(
-        files.map((file) => ({
-          sender: req.userId,
-          ...target,
-          name: safeChatAttachmentName(file.originalname),
-          mime: file.mimetype,
-          size: file.size,
-          data: file.buffer,
-        })),
-      );
-      return res.status(201).json(attachments.map(chatAttachmentMetadata));
+      const gridFsFileIds: unknown[] = [];
+      try {
+        for (const file of files) {
+          gridFsFileIds.push(
+            await uploadTemporaryFile(file, {
+              kind: "chat",
+              senderId: req.userId!,
+              receiverId: target.receiver,
+              groupId: target.groupId,
+              projectId: target.project,
+            }),
+          );
+        }
+        const attachments = await ChatAttachment.create(
+          files.map((file, index) => ({
+            sender: req.userId,
+            ...target,
+            name: safeChatAttachmentName(file.originalname),
+            mime: file.mimetype,
+            size: file.size,
+            gridFsFileId: gridFsFileIds[index],
+          })),
+        );
+        return res.status(201).json(attachments.map(chatAttachmentMetadata));
+      } catch (error) {
+        await deleteGridFsFiles(gridFsFileIds);
+        throw error;
+      } finally {
+        await removeTemporaryFiles(files);
+      }
     },
   );
 
   app.get("/chat/attachments/:attachmentId", async (req, res) => {
     const attachment = await ChatAttachment.findById(
       objectId.parse(req.params.attachmentId),
-    );
+    ).select("+data");
     if (!attachment) throw new HttpError(404, "attachment not found");
     const allowed = attachment.groupId
       ? !!(await getProjectChatGroup(attachment.groupId))?.members.includes(
@@ -164,6 +188,15 @@ export function installDirectChatRoutes(app: Express) {
       "Content-Disposition",
       `${disposition}; filename*=UTF-8''${encodeURIComponent(attachment.name)}`,
     );
+    res.setHeader("Content-Length", String(attachment.size));
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.setHeader("ETag", `\"chat-${attachment.id}-${attachment.size}\"`);
+    if (attachment.gridFsFileId) {
+      await pipeGridFsFile(attachment.gridFsFileId, res);
+      return;
+    }
+    if (!attachment.data)
+      throw new HttpError(404, "attachment content not found");
     return res.send(attachment.data);
   });
 }

@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import mongoose from "mongoose";
-import multer from "multer";
 import { z } from "zod";
 import { Comment, Discussion, Document } from "./models.ts";
 import {
@@ -10,6 +9,14 @@ import {
   withWritableProject,
 } from "./projectAccess.ts";
 import { emitNotification } from "./notifications.ts";
+import {
+  cleanupTemporaryUploads,
+  deleteGridFsFiles,
+  pipeGridFsFile,
+  removeTemporaryFiles,
+  temporaryUpload,
+  uploadTemporaryFile,
+} from "./gridFsStorage.ts";
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const textFields = {
@@ -30,9 +37,13 @@ const commentInput = z
 const commentPatch = commentInput.extend({
   revision: z.number().int().positive().optional(),
 });
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 512 * 1024, files: 3, fields: 2, fieldSize: 20000 },
+export const DISCUSSION_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+export const DISCUSSION_ATTACHMENT_MAX_FILES = 3;
+const upload = temporaryUpload({
+  fileSize: DISCUSSION_ATTACHMENT_MAX_BYTES,
+  files: DISCUSSION_ATTACHMENT_MAX_FILES,
+  fields: 2,
+  fieldSize: 20000,
 });
 const mimeTypes = new Set([
   "image/jpeg",
@@ -146,61 +157,81 @@ export function installDiscussionRoutes(app: Express) {
   });
   app.post(
     `${base}/discussions`,
-    upload.array("files", 3),
+    upload.array("files", DISCUSSION_ATTACHMENT_MAX_FILES),
+    cleanupTemporaryUploads,
     async (req, res) => {
       const access = await projectAccess(
         String(req.params.projectId),
         req.userId!,
       );
       requireWritable(access);
-      const data = postInput.parse(req.body);
       const files = filesFromRequest(req.files);
-      validateFiles(files);
-      if (!data.body && !files.length)
-        throw new HttpError(400, "body or attachment required");
-      const id = await withWritableProject(
-        access.project.id,
-        req.userId!,
-        async (current, session) => {
-          const [post] = await Discussion.create(
-            [
-              {
-                ...data,
-                project: current.project.id,
-                author: req.userId,
-              },
-            ],
-            { session },
+      const gridFsFileIds: unknown[] = [];
+      let metadataCommitted = false;
+      try {
+        const data = postInput.parse(req.body);
+        validateFiles(files);
+        if (!data.body && !files.length)
+          throw new HttpError(400, "body or attachment required");
+        for (const file of files) {
+          gridFsFileIds.push(
+            await uploadTemporaryFile(file, {
+              kind: "discussion",
+              uploaderId: req.userId!,
+              projectId: access.project.id,
+            }),
           );
-          if (files.length) {
-            const documents = await Document.insertMany(
-              files.map((file) => ({
-                project: current.project.id,
-                post: post.id,
-                uploader: req.userId,
-                name: file.originalname.slice(0, 160),
-                mime: file.mimetype,
-                size: file.size,
-                data: file.buffer,
-              })),
+        }
+        const id = await withWritableProject(
+          access.project.id,
+          req.userId!,
+          async (current, session) => {
+            const [post] = await Discussion.create(
+              [
+                {
+                  ...data,
+                  project: current.project.id,
+                  author: req.userId,
+                },
+              ],
               { session },
             );
-            post.attachments = documents.map((document) => document._id);
-            await post.save({ session });
-          }
-          await emitNotification({
-            actorId: req.userId,
-            recipientIds: current.project.members.map(String),
-            projectId: current.project.id,
-            type: "discussion_created",
-            title: `Bài thảo luận mới: ${post.title}`,
-            entityId: post.id,
-            session,
-          });
-          return post.id;
-        },
-      );
-      return res.status(201).json(await populatedPost(id));
+            if (files.length) {
+              const documents = await Document.insertMany(
+                files.map((file, index) => ({
+                  project: current.project.id,
+                  post: post.id,
+                  uploader: req.userId,
+                  name: file.originalname.slice(0, 160),
+                  mime: file.mimetype,
+                  size: file.size,
+                  gridFsFileId: gridFsFileIds[index],
+                })),
+                { session },
+              );
+              post.attachments = documents.map((document) => document._id);
+              await post.save({ session });
+            }
+            await emitNotification({
+              actorId: req.userId,
+              recipientIds: current.project.members.map(String),
+              projectId: current.project.id,
+              type: "discussion_created",
+              title: `Bài thảo luận mới: ${post.title}`,
+              entityId: post.id,
+              session,
+            });
+            return post.id;
+          },
+        );
+        metadataCommitted = true;
+        return res.status(201).json(await populatedPost(id));
+      } catch (error) {
+        if (!metadataCommitted) await deleteGridFsFiles(gridFsFileIds);
+        throw error;
+      } finally {
+        await removeTemporaryFiles(files);
+      }
     },
   );
   app.patch(`${base}/discussions/:id`, async (req, res) => {
@@ -279,6 +310,7 @@ export function installDiscussionRoutes(app: Express) {
       req.userId!,
     );
     requireWritable(access);
+    let gridFsFileIds: unknown[] = [];
     await withWritableProject(
       access.project.id,
       req.userId!,
@@ -298,11 +330,16 @@ export function installDiscussionRoutes(app: Express) {
           )
         )
           throw new HttpError(403, "author or moderator required");
+        const documents = await Document.find({ post: post.id })
+          .select("gridFsFileId")
+          .session(session ?? null);
+        gridFsFileIds = documents.map((document) => document.gridFsFileId);
         await Comment.deleteMany({ post: post.id }, { session });
         await Document.deleteMany({ post: post.id }, { session });
         await Discussion.deleteOne({ _id: post.id }, { session });
       },
     );
+    await deleteGridFsFiles(gridFsFileIds);
     return res.json({ ok: true });
   });
   app.get(`${base}/discussions/:id/comments`, async (req, res) => {
@@ -477,40 +514,64 @@ export function installDiscussionRoutes(app: Express) {
         .limit(100),
     );
   });
-  app.post(`${base}/documents`, upload.single("file"), async (req, res) => {
-    const access = await projectAccess(
-      String(req.params.projectId),
-      req.userId!,
-    );
-    requireWritable(access);
-    if (!req.file) throw new HttpError(400, "file required, max 512 KiB");
-    validateFiles([req.file]);
-    const file = req.file;
-    const doc = await withWritableProject(
-      access.project.id,
-      req.userId!,
-      async (current, session) => {
-        const [result] = await Document.create(
-          [
-            {
-              project: current.project.id,
-              uploader: req.userId,
-              post: null,
-              name: file.originalname.slice(0, 160),
-              mime: file.mimetype,
-              size: file.size,
-              data: file.buffer,
-            },
-          ],
-          { session },
+  app.post(
+    `${base}/documents`,
+    upload.single("file"),
+    cleanupTemporaryUploads,
+    async (req, res) => {
+      const access = await projectAccess(
+        String(req.params.projectId),
+        req.userId!,
+      );
+      requireWritable(access);
+      if (!req.file) throw new HttpError(400, "file required, max 5 MiB");
+      const file = req.file;
+      let gridFsFileId: unknown;
+      let metadataCommitted = false;
+      try {
+        validateFiles([file]);
+        gridFsFileId = await uploadTemporaryFile(file, {
+          kind: "project-document",
+          uploaderId: req.userId!,
+          projectId: access.project.id,
+        });
+        const doc = await withWritableProject(
+          access.project.id,
+          req.userId!,
+          async (current, session) => {
+            const [result] = await Document.create(
+              [
+                {
+                  project: current.project.id,
+                  uploader: req.userId,
+                  post: null,
+                  name: file.originalname.slice(0, 160),
+                  mime: file.mimetype,
+                  size: file.size,
+                  gridFsFileId,
+                },
+              ],
+              { session },
+            );
+            return result;
+          },
         );
-        return result;
-      },
-    );
-    return res
-      .status(201)
-      .json({ id: doc.id, name: doc.name, size: doc.size, mime: doc.mime });
-  });
+        metadataCommitted = true;
+        return res.status(201).json({
+          id: doc.id,
+          name: doc.name,
+          size: doc.size,
+          mime: doc.mime,
+        });
+      } catch (error) {
+        if (!metadataCommitted && gridFsFileId)
+          await deleteGridFsFiles([gridFsFileId]);
+        throw error;
+      } finally {
+        await removeTemporaryFiles([file]);
+      }
+    },
+  );
   app.get(`${base}/documents/:id`, async (req, res) => {
     const access = await projectAccess(
       String(req.params.projectId),
@@ -519,7 +580,7 @@ export function installDiscussionRoutes(app: Express) {
     const doc = await Document.findOne({
       _id: objectId.parse(req.params.id),
       project: access.project.id,
-    });
+    }).select("+data");
     if (!doc) throw new HttpError(404, "document not found");
     if (doc.post)
       await loadPost(access.project.id, String(doc.post), req.userId!, access);
@@ -533,6 +594,14 @@ export function installDiscussionRoutes(app: Express) {
       "Content-Disposition",
       `attachment; filename*=UTF-8''${encodeURIComponent(doc.name)}`,
     );
+    res.setHeader("Content-Length", String(doc.size));
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.setHeader("ETag", `\"document-${doc.id}-${doc.size}\"`);
+    if (doc.gridFsFileId) {
+      await pipeGridFsFile(doc.gridFsFileId, res);
+      return;
+    }
+    if (!doc.data) throw new HttpError(404, "document content not found");
     return res.send(doc.data);
   });
 }

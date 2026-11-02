@@ -1,12 +1,8 @@
 import React, { memo } from "react";
-import { Image, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
 import type { StoredMessage } from "../domain/chat.ts";
-import {
-  chatAttachmentUrl,
-  getToken,
-  type ChatContact,
-} from "../services/api.ts";
+import { type ChatContact } from "../services/api.ts";
 import { formatViDateTime } from "../utils/calendar.ts";
 import Button from "../components/ui/Button.tsx";
 import {
@@ -14,6 +10,7 @@ import {
   directMessagesForContact,
 } from "../domain/directChatPolicy.ts";
 import { styles } from "../styles/app.ts";
+import CachedChatImage from "../components/chat/CachedChatImage.tsx";
 
 type MessagesScreenProps = {
   currentUserId: string;
@@ -257,11 +254,9 @@ function MessagesScreen({
                     key={attachment.id}
                     onPress={() => onDownloadAttachment(attachment)}
                   >
-                    <Image
-                      source={{
-                        uri: chatAttachmentUrl(attachment.id),
-                        headers: { Authorization: `Bearer ${getToken()}` },
-                      }}
+                    <CachedChatImage
+                      attachment={attachment}
+                      currentUserId={currentUserId}
                       resizeMode="cover"
                       style={styles.chatImage}
                     />

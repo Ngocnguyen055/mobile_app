@@ -1,5 +1,5 @@
 export const MAX_ATTACHMENT_COUNT = 3;
-export const MAX_ATTACHMENT_BYTES = 512 * 1024;
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 type AttachmentCandidate = {
   name?: string | null;
@@ -16,6 +16,6 @@ export function attachmentValidationError(
     (file) => typeof file.size === "number" && file.size > MAX_ATTACHMENT_BYTES,
   );
   if (oversized)
-    return `Tệp “${oversized.name || "đã chọn"}” vượt quá 512 KiB.`;
+    return `Tệp “${oversized.name || "đã chọn"}” vượt quá 5 MiB.`;
   return null;
 }

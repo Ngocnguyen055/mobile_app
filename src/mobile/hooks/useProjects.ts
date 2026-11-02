@@ -1,7 +1,10 @@
 import { useState } from "react";
 
 import { api, json, type Project } from "../services/api.ts";
-import { projectPageCount } from "../utils/projectList.ts";
+import {
+  projectPageCount,
+  type ProjectOwnershipFilter,
+} from "../utils/projectList.ts";
 
 type UseProjectsOptions = {
   onOpenProject: (projectId: string) => Promise<unknown>;
@@ -14,6 +17,8 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     useState<Project["kind"]>("independent");
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState("");
+  const [projectOwnershipFilter, setProjectOwnershipFilter] =
+    useState<ProjectOwnershipFilter>("all");
   const [projectCreateVisible, setProjectCreateVisible] = useState(false);
   const [projectCreating, setProjectCreating] = useState(false);
 
@@ -52,6 +57,7 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     setProjectKind("independent");
     setProjectPage(0);
     setProjectSearch("");
+    setProjectOwnershipFilter("all");
     setProjectCreateVisible(false);
     setProjectCreating(false);
   };
@@ -66,6 +72,8 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     setProjectPage,
     projectSearch,
     setProjectSearch,
+    projectOwnershipFilter,
+    setProjectOwnershipFilter,
     projectCreateVisible,
     setProjectCreateVisible,
     projectCreating,

@@ -6,7 +6,7 @@ Tài liệu này mô tả chat của ứng dụng Mobile. Bản DS01 P2P đã đ
 
 - Tìm người chat bằng email, không có kết bạn hoặc tải toàn bộ danh bạ.
 - Chat 1:1 và nhóm tự đồng bộ theo thành viên dự án.
-- Text, ảnh và tệp nhỏ; tối đa 3 tệp/lần, 512 KiB/tệp.
+- Text, ảnh và tệp; tối đa 3 tệp/lần, 5 MiB/tệp.
 - Trạng thái `queued`, `delivered`, `read`; Message ID chống trùng.
 - SQLite giữ lịch sử, cursor và outbox trên Android.
 - Chặn tài khoản, xóa hội thoại phía người thao tác và kiểm tra quyền tải tệp.
@@ -76,7 +76,7 @@ Mỗi record gồm Message ID, sender, receiver, group/project tùy chọn, body
 
 ### `chat_attachments`
 
-Attachment thuộc đúng một direct receiver hoặc group. Bytes lưu dưới dạng `Buffer`; metadata trả về Mobile chỉ gồm `id`, `name`, `mime`, `size`. Cách này phù hợp file nhỏ của bài tập. Khi mở rộng, chuyển bytes sang object storage và giữ metadata trong MongoDB.
+Attachment thuộc đúng một direct receiver hoặc group. Metadata giữ `gridFsFileId`; bytes được chia chunk trong GridFS thay vì nằm trong document metadata. Response danh sách chỉ gồm `id`, `name`, `mime`, `size`, còn endpoint tải stream bytes khi cần. Dữ liệu `Buffer` cũ vẫn đọc được để tương thích; tệp mới không dùng cách đó.
 
 ### `user_blocks`
 
@@ -89,8 +89,11 @@ Block là quan hệ có hướng. Nếu một trong hai phía chặn, API từ c
 - `chat_sync_state`: cursor đồng bộ tăng dần theo `updatedAt + _id`.
 - `direct_chat_contacts`: hội thoại đã mở hoặc contact suy ra từ message.
 - `direct_chat_preferences`: cache block cục bộ.
+- `attachment_cache`: URI, kích thước, MIME và thời điểm truy cập gần nhất của file đã cache theo tài khoản.
 
 Mọi lần sync đều upsert theo khóa message nên nhận lặp không tạo bubble trùng. App polling khoảng 3 giây khi đang mở và sync ngay lúc khởi tạo/open hội thoại.
+
+Ảnh/tệp được tải một lần vào cache riêng của tài khoản, kiểm tra kích thước trước khi dùng lại và dọn theo LRU khi tổng cache vượt 200 MiB. Cache được xóa lúc đăng xuất; hệ điều hành vẫn có thể tự dọn thư mục cache khi thiếu dung lượng.
 
 ## Xóa và quyền
 
@@ -111,6 +114,6 @@ Xóa hội thoại thêm user hiện tại vào `hiddenFor` trên các tin direc
 
 - Polling chỉ chạy ổn định khi app đang mở; chưa có FCM/Expo push hoặc background worker bảo đảm.
 - Không có mã hóa đầu cuối; API/MongoDB nhìn thấy nội dung.
-- Attachment hiện nằm trong MongoDB và bị giới hạn 512 KiB.
+- Attachment nằm trong MongoDB GridFS, giới hạn 5 MiB/tệp và 3 tệp/lần; Atlas miễn phí vẫn có giới hạn tổng dung lượng.
 - Không có gọi thoại/video, thu hồi tin hoặc delivery giữa hai máy khi cả hai đều không thể truy cập API.
 - Test tự động dùng model mock và SQLite thật trong bộ nhớ; vẫn cần kiểm chứng Atlas và hai Android/emulator thật.

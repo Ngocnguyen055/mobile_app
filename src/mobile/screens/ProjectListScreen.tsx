@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -15,14 +15,18 @@ import TextField from "../components/ui/TextField.tsx";
 import {
   filterProjects,
   orderProjectsNewestFirst,
+  projectOwnerDetails,
   projectsForPage,
+  type ProjectOwnershipFilter,
 } from "../utils/projectList.ts";
 import { roleLabels } from "../domain/projectPolicy.ts";
 import { styles } from "../styles/app.ts";
 
 type ProjectListScreenProps = {
   projects: Project[];
+  currentUserId: string;
   search: string;
+  ownershipFilter: ProjectOwnershipFilter;
   page: number;
   createVisible: boolean;
   creating: boolean;
@@ -32,6 +36,7 @@ type ProjectListScreenProps = {
   onOpenCreate: () => void;
   onCloseCreate: () => void;
   onSearchChange: (value: string) => void;
+  onOwnershipFilterChange: (value: ProjectOwnershipFilter) => void;
   onPageChange: (page: number) => void;
   onProjectNameChange: (value: string) => void;
   onProjectKindChange: (kind: Project["kind"]) => void;
@@ -40,9 +45,41 @@ type ProjectListScreenProps = {
   onCreateProject: () => void;
 };
 
+const ownershipOptions: ReadonlyArray<{
+  value: ProjectOwnershipFilter;
+  label: string;
+}> = [
+  { value: "all", label: "Tất cả" },
+  { value: "owned", label: "Dự án của bạn" },
+  { value: "other", label: "Dự án khác" },
+];
+
+function OwnerDetails({
+  project,
+  currentUserId,
+}: {
+  project: Project;
+  currentUserId: string;
+}) {
+  if (project.owner === currentUserId) return null;
+  const owner = projectOwnerDetails(project);
+  return (
+    <View style={styles.projectOwnerBlock}>
+      <Text numberOfLines={1} style={styles.projectOwnerName}>
+        Chủ dự án: {owner?.name || "Không xác định"}
+      </Text>
+      <Text numberOfLines={1} style={styles.projectOwnerEmail}>
+        {owner?.email || "Chưa có email"}
+      </Text>
+    </View>
+  );
+}
+
 function ProjectListScreen({
   projects,
+  currentUserId,
   search,
+  ownershipFilter,
   page,
   createVisible,
   creating,
@@ -52,6 +89,7 @@ function ProjectListScreen({
   onOpenCreate,
   onCloseCreate,
   onSearchChange,
+  onOwnershipFilterChange,
   onPageChange,
   onProjectNameChange,
   onProjectKindChange,
@@ -59,9 +97,18 @@ function ProjectListScreen({
   onOpenProject,
   onCreateProject,
 }: ProjectListScreenProps) {
-  const filteredProjects = filterProjects(projects, search);
+  const [filterExpanded, setFilterExpanded] = useState(false);
+  const filteredProjects = filterProjects(
+    projects,
+    search,
+    ownershipFilter,
+    currentUserId,
+  );
   const orderedProjects = orderProjectsNewestFirst(filteredProjects);
   const pagination = projectsForPage(orderedProjects, page);
+  const ownershipLabel =
+    ownershipOptions.find((option) => option.value === ownershipFilter)?.label ||
+    ownershipOptions[0].label;
 
   return (
     <>
@@ -97,30 +144,80 @@ function ProjectListScreen({
           <Text style={styles.textButtonLabel}>Làm mới ↻</Text>
         </Pressable>
       </View>
-      <View style={styles.projectSearchBox}>
-        <Text style={styles.projectSearchIcon}>⌕</Text>
-        <TextInput
-          accessibilityLabel="Tìm kiếm dự án"
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={onSearchChange}
-          placeholder="Tìm theo tên dự án..."
-          placeholderTextColor="#969DB0"
-          returnKeyType="search"
-          style={styles.projectSearchInput}
-          value={search}
-        />
-        {!!search && (
+      <View style={styles.projectFiltersRow}>
+        <View style={[styles.projectSearchBox, styles.projectSearchGrow]}>
+          <Text style={styles.projectSearchIcon}>⌕</Text>
+          <TextInput
+            accessibilityLabel="Tìm kiếm dự án"
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={onSearchChange}
+            placeholder="Tìm dự án..."
+            placeholderTextColor="#969DB0"
+            returnKeyType="search"
+            style={styles.projectSearchInput}
+            value={search}
+          />
+          {!!search && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Xóa nội dung tìm kiếm"
+              hitSlop={8}
+              onPress={() => onSearchChange("")}
+              style={styles.projectSearchClear}
+            >
+              <Text style={styles.projectSearchClearText}>×</Text>
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.projectFilterDropdown}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Xóa nội dung tìm kiếm"
-            hitSlop={8}
-            onPress={() => onSearchChange("")}
-            style={styles.projectSearchClear}
+            accessibilityLabel={`Lọc dự án: ${ownershipLabel}`}
+            accessibilityState={{ expanded: filterExpanded }}
+            onPress={() => setFilterExpanded((current) => !current)}
+            style={styles.projectFilterButton}
           >
-            <Text style={styles.projectSearchClearText}>×</Text>
+            <Text numberOfLines={1} style={styles.projectFilterButtonText}>
+              {ownershipLabel}
+            </Text>
+            <Text style={styles.projectFilterArrow}>
+              {filterExpanded ? "▴" : "▾"}
+            </Text>
           </Pressable>
-        )}
+          {filterExpanded && (
+            <View style={styles.projectFilterMenu}>
+              {ownershipOptions.map((option) => {
+                const selected = option.value === ownershipFilter;
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      onOwnershipFilterChange(option.value);
+                      setFilterExpanded(false);
+                    }}
+                    style={[
+                      styles.projectFilterOption,
+                      selected && styles.projectFilterOptionSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.projectFilterOptionText,
+                        selected && styles.projectFilterOptionTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {selected && <Text style={styles.projectFilterCheck}>✓</Text>}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </View>
       {pagination.items.map((item) => (
         <Pressable
@@ -155,6 +252,7 @@ function ProjectListScreen({
                 {item.description}
               </Text>
             )}
+            <OwnerDetails project={item} currentUserId={currentUserId} />
             <View
               style={[styles.statusPill, item.archived && styles.archivedPill]}
             >
@@ -184,7 +282,11 @@ function ProjectListScreen({
         <View style={styles.emptyCard}>
           <Text style={styles.emptyIcon}>⌕</Text>
           <Text style={styles.strong}>Không tìm thấy dự án</Text>
-          <Text style={styles.muted}>Thử tìm bằng một tên dự án khác.</Text>
+          <Text style={styles.muted}>
+            {search
+              ? "Thử tìm bằng một tên dự án khác."
+              : "Không có dự án phù hợp với bộ lọc đã chọn."}
+          </Text>
         </View>
       )}
       {filteredProjects.length > 5 && (

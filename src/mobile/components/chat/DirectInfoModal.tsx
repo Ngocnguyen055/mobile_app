@@ -1,18 +1,15 @@
 import React, { memo } from "react";
-import { Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import type {
   ChatAttachment,
   StoredMessage,
 } from "../../domain/chat.ts";
-import {
-  chatAttachmentUrl,
-  getToken,
-  type ChatContact,
-} from "../../services/api.ts";
+import { type ChatContact } from "../../services/api.ts";
 import { directMessagesForContact } from "../../domain/directChatPolicy.ts";
 import { styles } from "../../styles/app.ts";
 import Button from "../ui/Button.tsx";
+import CachedChatImage from "./CachedChatImage.tsx";
 
 type DirectInfoModalProps = {
   contact: ChatContact;
@@ -103,11 +100,9 @@ function DirectInfoModal({
                     onPress={() => onDownload(attachment)}
                     style={styles.chatImageTile}
                   >
-                    <Image
-                      source={{
-                        uri: chatAttachmentUrl(attachment.id),
-                        headers: { Authorization: `Bearer ${getToken()}` },
-                      }}
+                    <CachedChatImage
+                      attachment={attachment}
+                      currentUserId={currentUserId}
                       resizeMode="cover"
                       style={styles.chatInfoImage}
                     />

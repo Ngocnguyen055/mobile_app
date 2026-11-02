@@ -1,19 +1,16 @@
 import React, { memo } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import type {
   ChatAttachment,
   ChatGroup,
   StoredMessage,
 } from "../../domain/chat.ts";
-import {
-  chatAttachmentUrl,
-  getToken,
-  type User,
-} from "../../services/api.ts";
+import { type User } from "../../services/api.ts";
 import { styles } from "../../styles/app.ts";
 import Button from "../ui/Button.tsx";
 import TextField from "../ui/TextField.tsx";
+import CachedChatImage from "../chat/CachedChatImage.tsx";
 
 const statusLabel = {
   pending: "Đang gửi",
@@ -130,11 +127,9 @@ function ProjectChatTab({
                   key={attachment.id}
                   onPress={() => onDownloadAttachment(attachment)}
                 >
-                  <Image
-                    source={{
-                      uri: chatAttachmentUrl(attachment.id),
-                      headers: { Authorization: `Bearer ${getToken()}` },
-                    }}
+                  <CachedChatImage
+                    attachment={attachment}
+                    currentUserId={currentUserId}
                     resizeMode="cover"
                     style={styles.chatImage}
                   />

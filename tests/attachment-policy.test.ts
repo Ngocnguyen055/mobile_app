@@ -6,7 +6,7 @@ import {
 } from "../src/mobile/domain/attachmentPolicy.ts";
 
 describe("mobile attachment policy", () => {
-  it("accepts up to three files at or below 512 KiB", () => {
+  it("accepts up to three files at or below 5 MiB", () => {
     expect(
       attachmentValidationError(0, [
         { name: "a.png", size: MAX_ATTACHMENT_BYTES },
@@ -30,6 +30,6 @@ describe("mobile attachment policy", () => {
       attachmentValidationError(0, [
         { name: "anh-lon.png", size: MAX_ATTACHMENT_BYTES + 1 },
       ]),
-    ).toContain("anh-lon.png");
+    ).toContain("5 MiB");
   });
 });

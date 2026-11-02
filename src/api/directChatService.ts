@@ -1,7 +1,7 @@
 import { ChatAttachment, User, UserBlock } from "./models.ts";
 import { HttpError } from "./projectAccess.ts";
 
-export const CHAT_ATTACHMENT_MAX_BYTES = 512 * 1024;
+export const CHAT_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const CHAT_ATTACHMENT_MAX_FILES = 3;
 
 const attachmentMimeTypes = new Set([

@@ -1,11 +1,9 @@
 import { useRef, useState } from "react";
-import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import {
   API_URL,
   api,
-  getToken,
   json,
   type CalendarEvent,
   type Discussion,
@@ -14,13 +12,16 @@ import {
   type Project,
   type Task,
 } from "../services/api.ts";
+import { ensureCachedProjectDocument } from "../services/attachmentCache.ts";
 
 type UseProjectWorkspaceOptions = {
   onReloadProject: (projectId: string) => Promise<unknown>;
+  currentUserId?: string;
 };
 
 export function useProjectWorkspace({
   onReloadProject,
+  currentUserId,
 }: UseProjectWorkspaceOptions) {
   const projectRef = useRef<Project | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -95,16 +96,14 @@ export function useProjectWorkspace({
   };
 
   const downloadDocument = async (document: DocumentRow) => {
-    if (!project || !FileSystem.documentDirectory) return;
-    const safeName = document.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
-    const destination = `${FileSystem.documentDirectory}${document._id}-${safeName}`;
-    const file = await FileSystem.downloadAsync(
+    if (!project || !currentUserId) return;
+    const uri = await ensureCachedProjectDocument(
+      currentUserId,
+      project._id,
+      document,
       `${API_URL}/projects/${project._id}/documents/${document._id}`,
-      destination,
-      { headers: { Authorization: `Bearer ${getToken()}` } },
     );
-    if (file.status !== 200) throw new Error(`Tải thất bại: ${file.status}`);
-    await Sharing.shareAsync(file.uri);
+    await Sharing.shareAsync(uri, { mimeType: document.mime });
   };
 
   return {

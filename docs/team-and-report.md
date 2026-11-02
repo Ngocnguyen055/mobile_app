@@ -33,7 +33,7 @@ Cả ba cùng review code và chạy kịch bản tích hợp. Người phụ tr
 10. Xử lý lỗi, conflict version, block và kiểm tra tệp.
 11. Chiến lược kiểm thử: unit/API/SQLite/thiết bị và các giới hạn của từng loại bằng chứng.
 12. Kết quả thực nghiệm thật: bảng test, ảnh emulator/điện thoại, log API/Mongo và phép đo hiệu năng.
-13. Hạn chế: polling foreground, chưa E2EE, attachment nhỏ, chưa push/background.
+13. Hạn chế: polling foreground, chưa E2EE, GridFS/Atlas có giới hạn tổng dung lượng, chưa push/background.
 14. Hướng phát triển: Google Calendar OAuth, push notification, object storage, E2EE.
 15. Phân công, bài học và kết luận.
 

@@ -8,6 +8,7 @@ import {
   type User,
 } from "../services/api.ts";
 import type { AuthMode } from "../types/index.ts";
+import { clearAttachmentCache } from "../services/attachmentCache.ts";
 
 type AuthCredentials = {
   mode: AuthMode;
@@ -53,6 +54,8 @@ export function useAuth({ onAuthenticated }: UseAuthOptions) {
   };
 
   const clearAuth = async () => {
+    if (user?._id)
+      await clearAttachmentCache(user._id).catch(() => undefined);
     await setToken("");
     setUser(null);
     setAuthMode("login");

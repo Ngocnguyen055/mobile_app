@@ -25,13 +25,21 @@ export type ChatOutboxItem = {
   createdAt: number;
 };
 
+export type AttachmentCacheRow = {
+  attachmentId: string;
+  localUri: string;
+  size: number;
+  mime: string;
+  lastAccessedAt: number;
+};
+
 const database = SQLite.openDatabaseAsync("ds01-chat.db");
 let initialized: typeof database | undefined;
 async function db() {
   initialized ||= (async () => {
     const connection = await database;
     await connection.execAsync(
-      "CREATE TABLE IF NOT EXISTS messages (scope TEXT NOT NULL, message_id TEXT NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, group_id TEXT, timestamp INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(scope,message_id,sender_id,receiver_id)); CREATE INDEX IF NOT EXISTS messages_order ON messages(scope,timestamp); CREATE TABLE IF NOT EXISTS storage_migrations (name TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS reminders (task_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT); CREATE TABLE IF NOT EXISTS event_reminders (event_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS direct_chat_preferences (scope TEXT NOT NULL, user_id TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS direct_chat_contacts (scope TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS chat_outbox (scope TEXT NOT NULL, id TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(scope,id)); CREATE INDEX IF NOT EXISTS chat_outbox_order ON chat_outbox(scope,created_at,id); CREATE TABLE IF NOT EXISTS chat_sync_state (scope TEXT PRIMARY KEY, cursor TEXT);",
+      "CREATE TABLE IF NOT EXISTS messages (scope TEXT NOT NULL, message_id TEXT NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, group_id TEXT, timestamp INTEGER NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(scope,message_id,sender_id,receiver_id)); CREATE INDEX IF NOT EXISTS messages_order ON messages(scope,timestamp); CREATE TABLE IF NOT EXISTS storage_migrations (name TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS reminders (task_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT); CREATE TABLE IF NOT EXISTS event_reminders (event_id TEXT PRIMARY KEY, notification_ids TEXT NOT NULL, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS direct_chat_preferences (scope TEXT NOT NULL, user_id TEXT NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS direct_chat_contacts (scope TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,user_id)); CREATE TABLE IF NOT EXISTS chat_outbox (scope TEXT NOT NULL, id TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(scope,id)); CREATE INDEX IF NOT EXISTS chat_outbox_order ON chat_outbox(scope,created_at,id); CREATE TABLE IF NOT EXISTS chat_sync_state (scope TEXT PRIMARY KEY, cursor TEXT); CREATE TABLE IF NOT EXISTS attachment_cache (scope TEXT NOT NULL, attachment_id TEXT NOT NULL, local_uri TEXT NOT NULL, size INTEGER NOT NULL, mime TEXT NOT NULL, last_accessed_at INTEGER NOT NULL, PRIMARY KEY(scope,attachment_id)); CREATE INDEX IF NOT EXISTS attachment_cache_lru ON attachment_cache(scope,last_accessed_at,attachment_id);",
     );
     const preferenceColumns = await connection.getAllAsync<{ name: string }>(
       "PRAGMA table_info(direct_chat_preferences)",
@@ -370,6 +378,87 @@ export class MobileStore {
       this.scope,
       cursor,
     );
+  }
+  async getAttachmentCache(
+    attachmentId: string,
+  ): Promise<AttachmentCacheRow | null> {
+    const conn = await db();
+    const row = await conn.getFirstAsync<{
+      attachment_id: string;
+      local_uri: string;
+      size: number;
+      mime: string;
+      last_accessed_at: number;
+    }>(
+      "SELECT attachment_id,local_uri,size,mime,last_accessed_at FROM attachment_cache WHERE scope=? AND attachment_id=?",
+      this.scope,
+      attachmentId,
+    );
+    return row
+      ? {
+          attachmentId: row.attachment_id,
+          localUri: row.local_uri,
+          size: row.size,
+          mime: row.mime,
+          lastAccessedAt: row.last_accessed_at,
+        }
+      : null;
+  }
+  async saveAttachmentCache(row: AttachmentCacheRow): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "INSERT INTO attachment_cache(scope,attachment_id,local_uri,size,mime,last_accessed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(scope,attachment_id) DO UPDATE SET local_uri=excluded.local_uri,size=excluded.size,mime=excluded.mime,last_accessed_at=excluded.last_accessed_at",
+      this.scope,
+      row.attachmentId,
+      row.localUri,
+      row.size,
+      row.mime,
+      row.lastAccessedAt,
+    );
+  }
+  async touchAttachmentCache(
+    attachmentId: string,
+    lastAccessedAt = Date.now(),
+  ): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "UPDATE attachment_cache SET last_accessed_at=? WHERE scope=? AND attachment_id=?",
+      lastAccessedAt,
+      this.scope,
+      attachmentId,
+    );
+  }
+  async listAttachmentCache(): Promise<AttachmentCacheRow[]> {
+    const conn = await db();
+    const rows = await conn.getAllAsync<{
+      attachment_id: string;
+      local_uri: string;
+      size: number;
+      mime: string;
+      last_accessed_at: number;
+    }>(
+      "SELECT attachment_id,local_uri,size,mime,last_accessed_at FROM attachment_cache WHERE scope=? ORDER BY last_accessed_at,attachment_id",
+      this.scope,
+    );
+    return rows.map((row) => ({
+      attachmentId: row.attachment_id,
+      localUri: row.local_uri,
+      size: row.size,
+      mime: row.mime,
+      lastAccessedAt: row.last_accessed_at,
+    }));
+  }
+  async removeAttachmentCache(attachmentId: string): Promise<void> {
+    const conn = await db();
+    await conn.runAsync(
+      "DELETE FROM attachment_cache WHERE scope=? AND attachment_id=?",
+      this.scope,
+      attachmentId,
+    );
+  }
+  async clearAttachmentCache(): Promise<void> {
+    const conn = await db();
+    await conn.runAsync("DELETE FROM attachment_cache WHERE scope=?", this.scope);
   }
 }
 export type ReminderOffset =

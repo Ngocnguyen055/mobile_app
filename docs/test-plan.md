@@ -28,7 +28,7 @@ Không xem unit test hoặc export là bằng chứng OAuth, notification hay bu
 | R2 | Lỗi/phục hồi | Force stop/restart app giữa lúc sync | Cursor phục hồi, upsert idempotent, không mất lịch sử | SQLite test + thiết bị |
 | S1 | Dữ liệu sai/bảo mật | Giả sender/receiver/group hoặc ID sai | JWT quyết định sender; schema/ACL từ chối | API persistence/security tests |
 | S2 | Dữ liệu sai/bảo mật | User ngoài dự án tải tệp/đọc group | 403/404, không lộ metadata/bytes | discussion/chat tests |
-| S3 | Dữ liệu sai/bảo mật | File quá 512 KiB hoặc quá 3 file | 413/400, không tạo message nửa chừng | multipart API test |
+| S3 | Dữ liệu sai/bảo mật | File quá 5 MiB hoặc quá 3 file | 400, không tạo message nửa chừng | multipart API test |
 | P1 | Hiệu năng | Sync 1.000 delivery, page/cursor | Ghi p50/p95/max và RAM thật; không đặt ngưỡng giả | script đo + file evidence |
 
 ## Lệnh tự động

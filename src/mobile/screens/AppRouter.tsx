@@ -84,7 +84,9 @@ export default function AppRouter({
   const projectListScreen = (
     <ProjectListScreen
       projects={projectsController.projects}
+      currentUserId={user._id}
       search={projectsController.projectSearch}
+      ownershipFilter={projectsController.projectOwnershipFilter}
       page={projectsController.projectPage}
       createVisible={projectsController.projectCreateVisible}
       creating={projectsController.projectCreating}
@@ -98,6 +100,10 @@ export default function AppRouter({
       onCloseCreate={() => projectsController.setProjectCreateVisible(false)}
       onSearchChange={(value) => {
         projectsController.setProjectSearch(value);
+        projectsController.setProjectPage(0);
+      }}
+      onOwnershipFilterChange={(value) => {
+        projectsController.setProjectOwnershipFilter(value);
         projectsController.setProjectPage(0);
       }}
       onPageChange={projectsController.setProjectPage}

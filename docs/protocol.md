@@ -100,9 +100,9 @@ API chỉ đánh dấu các delivery có receiver là user hiện tại. User kh
 
 ## Attachment
 
-Upload dùng `multipart/form-data`, tối đa 3 file và 512 KiB/file. Request phải có đúng một target: `receiverId` hoặc `groupId`. Sau upload, client đưa các ID nhận được vào `attachmentIds` của message. Quyền tải kiểm tra sender/receiver của direct hoặc membership hiện tại của group.
+Upload dùng `multipart/form-data`, tối đa 3 file và 5 MiB/file. Request phải có đúng một target: `receiverId` hoặc `groupId`. API ghi multipart vào tệp tạm, stream vào GridFS rồi xóa tệp tạm; không giữ toàn bộ file trong RAM. Sau upload, client đưa các ID nhận được vào `attachmentIds` của message. Quyền tải kiểm tra sender/receiver của direct hoặc membership hiện tại của group.
 
-Bytes hiện lưu trong MongoDB. Đây là giới hạn có chủ đích cho bài tập; khi mở rộng nên chuyển sang object storage và URL ký ngắn hạn.
+Metadata lưu trong `chat_attachments`; bytes nằm ở GridFS (`uploads.files`, `uploads.chunks`). Endpoint tải stream nội dung theo yêu cầu. Mobile cache file đã xem theo tài khoản và dùng lại file cục bộ; khi mở rộng quy mô nên chuyển sang object storage và URL ký ngắn hạn.
 
 ## Chống trùng, thứ tự và retry
 

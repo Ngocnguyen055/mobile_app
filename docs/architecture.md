@@ -44,10 +44,10 @@ UI không truy cập MongoDB. API service không điều khiển component. Chí
 - `projects`: dự án tổng/con, owner/manager, membership cache, archive, version, nguồn lực.
 - `project_members`: vai trò theo từng dự án; user không có vai trò toàn cục.
 - `tasks`, `events`: công việc và lịch.
-- `discussions`, `comments`, `documents`: nội dung lâu dài và tệp nhỏ.
+- `discussions`, `comments`, `documents`: nội dung lâu dài và metadata tệp.
 - `notifications`: hộp thư trong ứng dụng.
 - `chat_messages`: một record delivery cho mỗi người nhận.
-- `chat_attachments`: metadata và bytes tệp nhỏ.
+- `chat_attachments`: metadata và `gridFsFileId`; bytes nằm trong `uploads.files/uploads.chunks` của GridFS.
 - `user_blocks`: quan hệ chặn có hướng.
 
 Các thao tác thay đổi membership/manager/task liên quan dùng MongoDB transaction, vì vậy Mongo local cần replica set.
@@ -87,7 +87,8 @@ Google Calendar không còn là integration runtime. Nếu phát triển lại, 
 - Password lưu bằng bcrypt hash.
 - Zod giới hạn trường, kiểu và độ dài payload.
 - API kiểm tra membership/role trước mọi dữ liệu dự án, chat nhóm và tệp.
-- Attachment tối đa 512 KiB/tệp, tối đa 3 tệp/lần; quyền tải được kiểm tra lại.
+- Attachment tối đa 5 MiB/tệp, tối đa 3 tệp/lần; upload dùng tệp tạm trên API rồi stream vào GridFS, quyền tải được kiểm tra lại.
+- Mobile cache tệp theo tài khoản trong thư mục riêng, xác minh kích thước, theo dõi LRU bằng SQLite và tự dọn khi vượt 200 MiB.
 - Block được kiểm tra server-side, không chỉ khóa nút ở Mobile.
 - `MONGO_URL` và `JWT_SECRET` chỉ ở server `.env`, không dùng tiền tố Expo public.
 

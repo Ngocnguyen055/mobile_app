@@ -2,7 +2,6 @@ import { useRef, useState, type MutableRefObject } from "react";
 import { Alert } from "react-native";
 import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import {
   type ChatAttachment,
@@ -12,10 +11,8 @@ import {
 } from "../domain/chat.ts";
 
 import {
-  chatAttachmentUrl,
   ApiError,
   deleteStoredDirectConversation,
-  getToken,
   loadBlockedChatUsers,
   loadChatUser,
   markStoredChatMessagesRead,
@@ -33,6 +30,7 @@ import {
 import { canSendDirect } from "../domain/directChatPolicy.ts";
 import { selectedAttachmentValidationError } from "../utils/attachments.ts";
 import { MobileStore } from "../services/local.ts";
+import { ensureCachedChatAttachment } from "../services/attachmentCache.ts";
 
 type UseChatOptions = {
   user: User | null;
@@ -576,18 +574,9 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const downloadChatAttachment = async (attachment: ChatAttachment) => {
-    if (!FileSystem.documentDirectory)
-      throw new Error("Thiết bị không có thư mục lưu tệp.");
-    const safeName = attachment.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
-    const destination = `${FileSystem.documentDirectory}chat-${attachment.id}-${safeName}`;
-    const file = await FileSystem.downloadAsync(
-      chatAttachmentUrl(attachment.id),
-      destination,
-      { headers: { Authorization: `Bearer ${getToken()}` } },
-    );
-    if (file.status < 200 || file.status >= 300)
-      throw new Error(`Không tải được tệp (HTTP ${file.status}).`);
-    await Sharing.shareAsync(file.uri, { mimeType: attachment.mime });
+    if (!user?._id) throw new Error("Bạn cần đăng nhập để mở tệp.");
+    const uri = await ensureCachedChatAttachment(user._id, attachment);
+    await Sharing.shareAsync(uri, { mimeType: attachment.mime });
   };
 
   const ensureGroup = async () => {

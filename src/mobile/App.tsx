@@ -44,6 +44,7 @@ export default function App() {
   });
   const workspaceController = useProjectWorkspace({
     onReloadProject: (projectId) => loadProject(projectId, false),
+    currentUserId: user?._id,
   });
   const { project, projectRef } = workspaceController;
   const calendarController = useCalendarEvents({

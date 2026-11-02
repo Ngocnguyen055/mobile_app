@@ -92,7 +92,7 @@ async function attachmentIdsForTarget(
 
 async function populatedRecord(messageId: string, receiverId: string) {
   return ChatMessageRecord.findOne({ messageId, receiver: receiverId })
-    .populate("attachments")
+    .populate("attachments", "name mime size")
     .lean<MessageRow | null>();
 }
 
@@ -187,7 +187,7 @@ export async function persistGroupMessage(
     sender: senderId,
     receiver: { $in: recipients },
   })
-    .populate("attachments")
+    .populate("attachments", "name mime size")
     .sort({ receiver: 1 })
     .lean<MessageRow[]>();
   if (rows.length !== recipients.length)
@@ -230,7 +230,7 @@ export async function syncChatMessages(
       ],
     });
   const raw = await ChatMessageRecord.find(query)
-    .populate("attachments")
+    .populate("attachments", "name mime size")
     .sort({ updatedAt: 1, _id: 1 })
     .limit(limit + 1)
     .lean<MessageRow[]>();

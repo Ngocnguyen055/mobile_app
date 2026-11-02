@@ -235,7 +235,7 @@ Không đưa `MONGO_URL` hoặc `JWT_SECRET` vào biến `EXPO_PUBLIC_*`; mọi 
 
 - Chat đồng bộ bằng polling khi app đang mở; chưa có FCM/Expo Push hoặc background worker đảm bảo khi app bị hệ điều hành đóng.
 - Nội dung chat chưa mã hóa đầu cuối; API/MongoDB có thể đọc dữ liệu.
-- Attachment lưu trong MongoDB và giới hạn 512 KiB/tệp, tối đa 3 tệp/lần.
+- Attachment mới được stream qua tệp tạm vào MongoDB GridFS, tối đa 5 MiB/tệp và 3 tệp/lần. Mobile giữ cache cục bộ tối đa 200 MiB theo tài khoản.
 - Xóa hội thoại chỉ ẩn/xóa phía người thao tác; không thu hồi lịch sử của người còn lại.
 - Cần kiểm chứng thủ công trên hai Android/emulator và Atlas thật; test tự động không thay thế bằng chứng thiết bị.
 
@@ -243,7 +243,7 @@ Không đưa `MONGO_URL` hoặc `JWT_SECRET` vào biến `EXPO_PUBLIC_*`; mọi 
 
 - Tích hợp Google Calendar bằng OAuth thật, đồng bộ có khóa chống trùng và xử lý xung đột. Hiện repository **không chứa SDK, credential hoặc mã đồng bộ Google Calendar**.
 - Push notification/background sync cho chat và thông báo dự án.
-- Object storage cho ảnh/tệp lớn thay vì lưu bytes trong MongoDB.
+- Object storage cho quy mô lớn thay GridFS khi dung lượng Atlas hoặc lưu lượng tăng cao.
 - Mã hóa đầu cuối, thu hồi/chỉnh sửa tin nhắn, tìm kiếm toàn văn và phân trang lịch sử.
 
 Không tuyên bố các mục hướng phát triển đã hoạt động cho đến khi có credential, thiết bị và log kiểm chứng thật.

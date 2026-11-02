@@ -1,6 +1,7 @@
-import type { Project } from "../services/api.ts";
+import type { Project, User } from "../services/api.ts";
 
 export const PROJECTS_PER_PAGE = 5;
+export type ProjectOwnershipFilter = "all" | "owned" | "other";
 
 function normalizeSearch(value: string) {
   return value
@@ -12,11 +13,29 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
-export function filterProjects(projects: Project[], query: string) {
+export function filterProjects(
+  projects: Project[],
+  query: string,
+  ownership: ProjectOwnershipFilter = "all",
+  currentUserId = "",
+) {
   const keyword = normalizeSearch(query);
-  if (!keyword) return projects;
-  return projects.filter((project) =>
-    normalizeSearch(project.name).includes(keyword),
+  return projects.filter((project) => {
+    const matchesName =
+      !keyword || normalizeSearch(project.name).includes(keyword);
+    const ownedByCurrentUser = project.owner === currentUserId;
+    const matchesOwnership =
+      ownership === "all" ||
+      (ownership === "owned" && ownedByCurrentUser) ||
+      (ownership === "other" && !ownedByCurrentUser);
+    return matchesName && matchesOwnership;
+  });
+}
+
+export function projectOwnerDetails(project: Project): User | undefined {
+  return project.members.find(
+    (member): member is User =>
+      typeof member !== "string" && member._id === project.owner,
   );
 }
 

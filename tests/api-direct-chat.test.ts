@@ -12,6 +12,14 @@ import {
   validChatAttachmentMime,
 } from "../src/api/directChatService.ts";
 
+const gridFsFileId = "507f1f77bcf86cd799439099";
+vi.mock("../src/api/gridFsStorage.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/api/gridFsStorage.ts")>()),
+  uploadTemporaryFile: async () => "507f1f77bcf86cd799439099",
+  deleteGridFsFiles: vi.fn().mockResolvedValue(undefined),
+  pipeGridFsFile: vi.fn().mockResolvedValue(undefined),
+}));
+
 const me = "000000000000000000000001";
 const an = "000000000000000000000002";
 const binh = "000000000000000000000003";
@@ -132,13 +140,16 @@ describe("direct chat attachment access", () => {
         size: 3,
       },
     ] as never);
-    vi.spyOn(ChatAttachment, "findById").mockResolvedValue({
-      sender: me,
-      receiver: an,
-      name: "proof.png",
-      mime: "image/png",
-      size: 3,
-      data: Buffer.from("png"),
+    vi.spyOn(ChatAttachment, "findById").mockReturnValue({
+      select: vi.fn().mockResolvedValue({
+        id: "507f1f77bcf86cd799439011",
+        sender: me,
+        receiver: an,
+        name: "proof.png",
+        mime: "image/png",
+        size: 3,
+        data: Buffer.from("png"),
+      }),
     } as never);
 
     await withApi(async (baseUrl) => {
@@ -170,7 +181,7 @@ describe("direct chat attachment access", () => {
           name: "proof.png",
           mime: "image/png",
           size: 3,
-          data: expect.any(Buffer),
+          gridFsFileId,
         }),
       ]);
 

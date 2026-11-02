@@ -27,6 +27,13 @@ vi.mock("../src/api/models.ts", () => ({
   Task: {},
 }));
 vi.mock("../src/api/notifications.ts", () => ({ emitNotification: vi.fn() }));
+const gridFsFileId = "507f1f77bcf86cd799439099";
+vi.mock("../src/api/gridFsStorage.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/api/gridFsStorage.ts")>()),
+  uploadTemporaryFile: async () => "507f1f77bcf86cd799439099",
+  deleteGridFsFiles: vi.fn().mockResolvedValue(undefined),
+  pipeGridFsFile: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../src/api/projectAccess.ts", () => {
   class HttpError extends Error {
     constructor(
@@ -174,6 +181,7 @@ describe("discussion authorization and data boundaries", () => {
           uploader: actor,
           name: "notes.txt",
           size: 8,
+          gridFsFileId,
         }),
       ],
       { session: undefined },
@@ -245,9 +253,11 @@ describe("discussion authorization and data boundaries", () => {
   });
   it("prevents downloading hidden-post attachments using a guessed document ID", async () => {
     const base = await http();
-    vi.mocked(Document.findOne).mockResolvedValue({
-      post: postId,
-      data: Buffer.from("private"),
+    vi.mocked(Document.findOne).mockReturnValue({
+      select: vi.fn().mockResolvedValue({
+        post: postId,
+        data: Buffer.from("private"),
+      }),
     } as never);
     vi.mocked(Discussion.findOne).mockReturnValue(
       query({ id: postId, author: other, hidden: true }) as never,
@@ -297,7 +307,9 @@ describe("discussion authorization and data boundaries", () => {
     huge.set("body", "attached");
     huge.append(
       "files",
-      new Blob([new Uint8Array(512 * 1024 + 1)], { type: "application/pdf" }),
+      new Blob([new Uint8Array(5 * 1024 * 1024 + 1)], {
+        type: "application/pdf",
+      }),
       "big.pdf",
     );
     expect(

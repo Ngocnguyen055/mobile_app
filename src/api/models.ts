@@ -114,12 +114,18 @@ const documentSchema = new Schema(
     uploader: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     mime: { type: String, required: true },
-    size: { type: Number, required: true },
-    data: { type: Buffer, required: true },
+    size: { type: Number, required: true, min: 1, max: 5 * 1024 * 1024 },
+    gridFsFileId: { type: Schema.Types.ObjectId, default: null },
+    // Kept for reading attachments created before the GridFS migration.
+    data: { type: Buffer, default: null, select: false },
     post: { type: Schema.Types.ObjectId, ref: "Discussion", default: null },
   },
   { timestamps: true },
 );
+documentSchema.pre("validate", function () {
+  if (!this.gridFsFileId && !this.data)
+    this.invalidate("gridFsFileId", "document content is required");
+});
 const commentSchema = new Schema(
   {
     post: { type: Schema.Types.ObjectId, ref: "Discussion", required: true },
@@ -171,8 +177,10 @@ const chatAttachmentSchema = new Schema(
     project: { type: Schema.Types.ObjectId, ref: "Project", default: null },
     name: { type: String, required: true, maxlength: 160 },
     mime: { type: String, required: true, maxlength: 120 },
-    size: { type: Number, required: true, min: 1, max: 512 * 1024 },
-    data: { type: Buffer, required: true },
+    size: { type: Number, required: true, min: 1, max: 5 * 1024 * 1024 },
+    gridFsFileId: { type: Schema.Types.ObjectId, default: null },
+    // Kept for reading attachments created before the GridFS migration.
+    data: { type: Buffer, default: null, select: false },
   },
   { timestamps: true, collection: "chat_attachments" },
 );
@@ -182,6 +190,8 @@ chatAttachmentSchema.pre("validate", function () {
       "receiver",
       "chat attachment requires exactly one receiver or group",
     );
+  if (!this.gridFsFileId && !this.data)
+    this.invalidate("gridFsFileId", "chat attachment content is required");
 });
 chatAttachmentSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
 chatAttachmentSchema.index({ receiver: 1, sender: 1, createdAt: -1 });
