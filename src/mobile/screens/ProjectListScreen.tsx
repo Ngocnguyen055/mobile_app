@@ -155,9 +155,10 @@ function ProjectListScreen({
   const [calendarCursor, setCalendarCursor] = useState(() =>
     new Date().toISOString(),
   );
+  const topLevelProjects = projects.filter((project) => !project.parentProject);
   const activeDateAnchor = dateAnchor ? validDate(dateAnchor) : new Date();
   const filteredProjects = filterProjects(
-    projects,
+    topLevelProjects,
     search,
     ownershipFilter,
     currentUserId,
@@ -165,7 +166,7 @@ function ProjectListScreen({
     activeDateAnchor,
   );
   const projectDotRows = filterProjects(
-    projects,
+    topLevelProjects,
     search,
     ownershipFilter,
     currentUserId,
@@ -240,8 +241,8 @@ function ProjectListScreen({
           </View>
           <View style={styles.compactStat}>
             <Text style={styles.statValue}>
-              {projects.filter((item) => !item.archived).length}
-              <Text style={styles.statTotal}>/{projects.length}</Text>
+              {topLevelProjects.filter((item) => !item.archived).length}
+              <Text style={styles.statTotal}>/{topLevelProjects.length}</Text>
             </Text>
             <Text style={styles.statLabel}>đang hoạt động</Text>
           </View>
@@ -390,7 +391,7 @@ function ProjectListScreen({
           <Text style={styles.cardArrow}>›</Text>
         </Pressable>
       ))}
-      {!projects.length && (
+      {!topLevelProjects.length && (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyIcon}>◇</Text>
           <Text style={styles.strong}>Chưa có dự án</Text>
@@ -399,7 +400,7 @@ function ProjectListScreen({
           </Text>
         </View>
       )}
-      {!!projects.length && !filteredProjects.length && (
+      {!!topLevelProjects.length && !filteredProjects.length && (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyIcon}>⌕</Text>
           <Text style={styles.strong}>Không tìm thấy dự án</Text>

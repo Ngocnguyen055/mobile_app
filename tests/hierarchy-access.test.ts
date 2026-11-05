@@ -50,6 +50,19 @@ function lookup(projects: ReturnType<typeof root>[]) {
         filter?.user === manager ? { role: "MANAGER" } : { role: "EMPLOYEE" },
       ) as unknown as ReturnType<typeof ProjectMember.findOne>,
   );
+  vi.spyOn(Project, "exists").mockImplementation(
+    (filter) =>
+      query(
+        projects.some(
+          (project) =>
+            String(project.parentProject || "") ===
+              String(filter?.parentProject || "") &&
+            String(project.manager || "") === String(filter?.manager || ""),
+        )
+          ? { _id: childId }
+          : null,
+      ) as unknown as ReturnType<typeof Project.exists>,
+  );
 }
 afterEach(() => vi.restoreAllMocks());
 
@@ -82,9 +95,15 @@ describe("hierarchical access boundaries", () => {
     await expect(projectAccess(otherChildId, manager)).rejects.toMatchObject({
       status: 403,
     });
-    expect((await projectAccess(rootId, manager)).permissions.manageTasks).toBe(
-      false,
-    );
+    const rootAccess = await projectAccess(rootId, manager);
+    expect(rootAccess.role).toBe("MANAGER");
+    expect(rootAccess.permissions).toMatchObject({
+      manageMembers: true,
+      manageTasks: false,
+      manageProject: false,
+      createChildren: false,
+      appointManager: false,
+    });
   });
   it("employee reads joined scopes but has no administration rights", async () => {
     lookup([root(), child()]);

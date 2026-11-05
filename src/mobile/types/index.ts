@@ -18,6 +18,8 @@ export type MainView =
   | "notifications";
 
 export type ProjectTab =
+  | "overview"
+  | "children"
   | "tasks"
   | "calendar"
   | "progress"
@@ -28,6 +30,8 @@ export type ProjectTab =
   | "management";
 
 export const projectTabLabels: Record<ProjectTab, string> = {
+  overview: "Tổng quan",
+  children: "Dự án con",
   tasks: "Task",
   calendar: "Lịch",
   progress: "Tiến độ",

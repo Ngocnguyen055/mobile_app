@@ -6,7 +6,7 @@ import {
 } from "../services/api.ts";
 import { calendarProjectId } from "../domain/calendarPolicy.ts";
 import type { useCalendarEvents } from "./useCalendarEvents.ts";
-import { chatGroupForProject, type useChat } from "./useChat.ts";
+import type { useChat } from "./useChat.ts";
 import type { useProjectWorkspace } from "./useProjectWorkspace.ts";
 import type { useProjects } from "./useProjects.ts";
 import type { useTasks } from "./useTasks.ts";
@@ -43,9 +43,16 @@ export function useProjectCoordinator({
   const loadProject = async (projectId: string, open = true) => {
     const loaded = await workspaceController.loadProjectWorkspace(projectId);
     tasksController.setTasks(loaded.tasks);
-    chatController.setGroup(chatGroupForProject(loaded.project));
+    if (open) chatController.closeProjectGroupConversation();
+    chatController.setProjectGroups(loaded.chatGroups);
     if (open) {
       tasksController.resetTaskWorkspace();
+      onSelectProjectTab(
+        loaded.project.kind === "hierarchical" &&
+          !loaded.project.parentProject
+          ? "overview"
+          : "tasks",
+      );
       onOpenProjectView();
     }
     return loaded.project;
@@ -71,14 +78,18 @@ export function useProjectCoordinator({
 
   const openNotification = async (notification: InboxNotification) => {
     if (!notification.project) return;
-    await loadProject(notification.project._id);
+    const loaded = await loadProject(notification.project._id);
+    const hierarchyRoot =
+      loaded.kind === "hierarchical" && !loaded.parentProject;
     onSelectProjectTab(
       notification.type.includes("discussion") ||
         notification.type.includes("comment")
         ? "discussion"
         : notification.type.includes("member")
           ? "members"
-          : "tasks",
+          : hierarchyRoot
+            ? "overview"
+            : "tasks",
     );
   };
 

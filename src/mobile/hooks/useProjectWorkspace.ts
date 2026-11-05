@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as Sharing from "expo-sharing";
 
+import type { ChatGroup } from "../domain/chat.ts";
 import {
   API_URL,
   api,
@@ -34,6 +35,7 @@ export function useProjectWorkspace({
   const loadProjectWorkspace = async (projectId: string) => {
     const [
       projectRow,
+      chatGroupRows,
       taskRows,
       eventRows,
       discussionRows,
@@ -41,6 +43,7 @@ export function useProjectWorkspace({
       stats,
     ] = await Promise.all([
       api<Project>(`/projects/${projectId}`),
+      api<ChatGroup[]>(`/projects/${projectId}/chat-groups`),
       api<Task[]>(`/projects/${projectId}/tasks`),
       api<CalendarEvent[]>(`/projects/${projectId}/events`),
       api<Discussion[]>(`/projects/${projectId}/discussions`),
@@ -61,7 +64,7 @@ export function useProjectWorkspace({
         projectRow.spentBudget,
       ].map(String),
     );
-    return { project: projectRow, tasks: taskRows };
+    return { project: projectRow, chatGroups: chatGroupRows, tasks: taskRows };
   };
 
   const resetProjectWorkspace = () => {

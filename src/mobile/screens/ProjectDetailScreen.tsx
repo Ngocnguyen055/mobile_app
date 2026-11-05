@@ -11,6 +11,7 @@ import CalendarPanel from "../components/calendar/CalendarPanel.tsx";
 import DiscussionPanel from "../components/discussion/DiscussionPanel.tsx";
 import ProjectManagementPanel from "../components/projects/ProjectManagementPanel.tsx";
 import ProjectChatTab from "../components/projects/ProjectChatTab.tsx";
+import ProjectHierarchyHub from "../components/projects/ProjectHierarchyHub.tsx";
 import ProjectProgressTab from "../components/projects/ProjectProgressTab.tsx";
 import ProjectResourcesTab from "../components/projects/ProjectResourcesTab.tsx";
 import ProjectTasksTab from "../components/projects/ProjectTasksTab.tsx";
@@ -49,6 +50,7 @@ type Props = {
   onProjectChanged: () => Promise<void>;
   onDownloadDocument: (document: DocumentRow) => Promise<void>;
   onOpenProject: (projectId: string) => Promise<unknown>;
+  onSelectProjectTab: (tab: ProjectTab) => void;
   onResourceValueChange: (index: number, value: string) => void;
   onSaveResources: () => Promise<void>;
   onError: (message: string) => void;
@@ -76,6 +78,7 @@ export default function ProjectDetailScreen({
   onProjectChanged,
   onDownloadDocument,
   onOpenProject,
+  onSelectProjectTab,
   onResourceValueChange,
   onSaveResources,
   onError,
@@ -93,6 +96,28 @@ export default function ProjectDetailScreen({
     members,
     currentUserId,
   );
+  const hierarchyRoot =
+    project.kind === "hierarchical" && !project.parentProject;
+  const hierarchyHubTab =
+    tab === "overview" || tab === "children" || tab === "members"
+      ? tab
+      : hierarchyRoot && (tab === "tasks" || tab === "progress")
+        ? "overview"
+      : null;
+
+  if (hierarchyRoot && hierarchyHubTab) {
+    return (
+      <ProjectHierarchyHub
+        project={project}
+        currentUserId={currentUserId}
+        tab={hierarchyHubTab}
+        onSelectTab={onSelectProjectTab}
+        onChanged={onProjectChanged}
+        onOpenProject={(projectId) => runAction(() => onOpenProject(projectId))}
+        onError={onError}
+      />
+    );
+  }
 
   if (tab === "tasks") {
     return (
@@ -190,18 +215,24 @@ export default function ProjectDetailScreen({
   if (tab === "chat") {
     return (
       <ProjectChatTab
+        groups={chatController.groups}
         group={chatController.group}
         members={members}
         currentUserId={currentUserId}
         messages={chatController.messages}
-        messageBody={chatController.messageBody}
-        uploading={chatController.groupUploading}
         readOnly={project.archived}
+        canManageGroups={project.permissions.manageProject}
+        conversationOpen={chatController.groupConversationOpen}
         onRefreshGroup={() => runAction(chatController.ensureGroup)}
-        onMessageBodyChange={chatController.setMessageBody}
-        onSend={() => runAction(chatController.sendChat)}
-        onAttach={() =>
-          runAction(chatController.pickAndSendGroupAttachments)
+        onCloseGroup={chatController.closeProjectGroupConversation}
+        onSelectGroup={(group) =>
+          runAction(() => chatController.selectProjectGroup(group))
+        }
+        onCreateGroup={(name) =>
+          runAction(() => chatController.createProjectGroup(name))
+        }
+        onDeleteGroup={(group) =>
+          runAction(() => chatController.deleteProjectGroup(group))
         }
         onDownloadAttachment={(attachment) =>
           runAction(() => chatController.downloadChatAttachment(attachment))
@@ -240,6 +271,7 @@ export default function ProjectDetailScreen({
     <ProjectManagementPanel
       key={`${project._id}-${tab}`}
       project={project}
+      currentUserId={currentUserId}
       section={tab === "members" ? "members" : "management"}
       onChanged={onProjectChanged}
       onOpenProject={(projectId) => runAction(() => onOpenProject(projectId))}

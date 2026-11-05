@@ -1,11 +1,20 @@
 import React from "react";
-import { SafeAreaView, ScrollView, StatusBar } from "react-native";
+import {
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import type {
   CalendarEvent,
   InboxNotification,
   User,
 } from "../services/api.ts";
+import type { ChatGroup } from "../domain/chat.ts";
 import CalendarPanel from "../components/calendar/CalendarPanel.tsx";
 import NotificationsScreen from "./NotificationsScreen.tsx";
 import BottomNav from "../components/ui/BottomNav.tsx";
@@ -29,6 +38,61 @@ import AccountScreen from "./AccountScreen.tsx";
 import MessagesScreen from "./MessagesScreen.tsx";
 import ProjectDetailScreen from "./ProjectDetailScreen.tsx";
 import ProjectListScreen from "./ProjectListScreen.tsx";
+
+type GroupComposerProps = {
+  group: ChatGroup;
+  body: string;
+  uploading: boolean;
+  onBodyChange: (value: string) => void;
+  onSend: () => void;
+  onAttach: () => void;
+};
+
+function GroupComposer({
+  group,
+  body,
+  uploading,
+  onBodyChange,
+  onSend,
+  onAttach,
+}: GroupComposerProps) {
+  const canSend = !!body.trim() && !uploading;
+  return (
+    <View style={styles.chatComposer}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Gửi ảnh hoặc tệp vào nhóm"
+        disabled={uploading}
+        onPress={onAttach}
+        style={[styles.chatAttachmentButton, uploading && styles.disabled]}
+      >
+        <Text style={styles.chatAttachmentButtonText}>
+          {uploading ? "…" : "+"}
+        </Text>
+      </Pressable>
+      <TextInput
+        accessibilityLabel={`Tin nhắn gửi nhóm ${group.name}`}
+        editable={!uploading}
+        maxLength={4000}
+        multiline
+        onChangeText={onBodyChange}
+        placeholder="Nhắn tin"
+        placeholderTextColor={colors.textSoft}
+        style={styles.chatComposerInput}
+        value={body}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Gửi tin nhắn nhóm"
+        disabled={!canSend}
+        onPress={onSend}
+        style={[styles.chatSendButton, !canSend && styles.disabled]}
+      >
+        <Text style={styles.buttonText}>Gửi</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 type Props = {
   user: User;
@@ -123,7 +187,12 @@ export default function AppRouter({
   );
 
   const handleContentSizeChange = (_width: number, _height: number) => {
-    if (mainView === "messages" && chatController.directContact)
+    if (
+      (mainView === "messages" && chatController.directContact) ||
+      (mainView === "project" &&
+        tab === "chat" &&
+        chatController.groupConversationOpen)
+    )
       contentScroll.current?.scrollToEnd({ animated: true });
   };
 
@@ -153,12 +222,17 @@ export default function AppRouter({
             calendarController.setPendingProjectEvent(null);
             onSelectMainView("projects");
           }}
+          onOpenParent={() => {
+            onDrawerVisibleChange(false);
+            void onOpenProject(workspaceController.project!.rootProject);
+          }}
           onSelectTab={onSelectProjectTab}
         />
       )}
       {mainView === "messages" && (
         <ChatToolbar
           contact={chatController.directContact}
+          refreshing={chatController.directOpening}
           blocked={
             !!chatController.directContact &&
             chatController.blockedUserIds.includes(
@@ -166,6 +240,14 @@ export default function AppRouter({
             )
           }
           onBack={chatController.closeDirectConversation}
+          onRefresh={() => {
+            if (chatController.directContact)
+              runAction(() =>
+                chatController.openDirectConversation(
+                  chatController.directContact!,
+                ),
+              );
+          }}
           onOpenInfo={() => chatController.setDirectInfoVisible(true)}
         />
       )}
@@ -250,6 +332,7 @@ export default function AppRouter({
               onProjectChanged={onProjectChanged}
               onDownloadDocument={workspaceController.downloadDocument}
               onOpenProject={onOpenProject}
+              onSelectProjectTab={onSelectProjectTab}
               onResourceValueChange={workspaceController.setResourceValue}
               onSaveResources={workspaceController.saveResources}
               onError={onError}
@@ -317,6 +400,22 @@ export default function AppRouter({
           }
         />
       )}
+      {mainView === "project" &&
+        tab === "chat" &&
+        chatController.groupConversationOpen &&
+        chatController.group &&
+        !workspaceController.project?.archived && (
+          <GroupComposer
+            group={chatController.group}
+            body={chatController.messageBody}
+            uploading={chatController.groupUploading}
+            onBodyChange={chatController.setMessageBody}
+            onSend={() => runAction(chatController.sendChat)}
+            onAttach={() =>
+              runAction(chatController.pickAndSendGroupAttachments)
+            }
+          />
+        )}
       <BottomNav currentView={mainView} onSelect={onSelectMainView} />
     </SafeAreaView>
   );

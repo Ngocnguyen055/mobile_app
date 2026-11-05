@@ -137,6 +137,12 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   chatBackIcon: { color: colors.primary, fontSize: 24, fontWeight: "800" },
+  chatRefreshIcon: {
+    color: colors.primary,
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: "800",
+  },
   chatInfoIcon: { color: colors.primary, fontSize: 23, fontWeight: "800" },
   chatCloseIcon: { color: colors.text, fontSize: 27, lineHeight: 29 },
   contextTitle: {

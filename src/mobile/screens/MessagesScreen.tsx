@@ -4,7 +4,6 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import type { StoredMessage } from "../domain/chat.ts";
 import { type ChatContact } from "../services/api.ts";
 import { formatViDateTime } from "../utils/calendar.ts";
-import Button from "../components/ui/Button.tsx";
 import {
   directMessageStatusLabel,
   directMessagesForContact,
@@ -204,21 +203,13 @@ function MessagesScreen({
 
   return (
     <>
-      <View style={styles.directStatusCard}>
-        {contactBlocked && (
+      {contactBlocked && (
+        <View style={styles.directStatusCard}>
           <Text style={styles.muted}>
             Bạn đã chặn người dùng này. Tin nhắn mới sẽ bị từ chối.
           </Text>
-        )}
-        <View style={styles.wrap}>
-          <Button
-            label="Làm mới tin nhắn"
-            onPress={() => onOpenContact(selectedContact)}
-            disabled={opening}
-            secondary
-          />
         </View>
-      </View>
+      )}
       {opening && !visibleMessages.length && (
         <Text style={styles.muted}>Đang tải lịch sử trên thiết bị…</Text>
       )}

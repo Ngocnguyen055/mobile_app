@@ -150,6 +150,7 @@ export async function persistGroupMessage(
   const group = await getProjectChatGroup(groupId);
   if (!group || !group.members.includes(senderId))
     throw new HttpError(403, "project chat access denied");
+  if (group.deleted) throw new HttpError(410, "chat group was deleted");
   if (group.archived) throw new HttpError(409, "project archived");
   const attachmentIds = await attachmentIdsForTarget(
     senderId,

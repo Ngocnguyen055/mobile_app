@@ -1,4 +1,10 @@
-import type { Project, ProjectRole, Task, User } from "../services/api.ts";
+import type {
+  Project,
+  ProjectChildSummary,
+  ProjectRole,
+  Task,
+  User,
+} from "../services/api.ts";
 
 export const roleLabels: Record<ProjectRole, string> = {
   OWNER: "Chủ dự án",
@@ -26,12 +32,14 @@ export function memberDisplayRole(project: Project, member: User): ProjectRole {
     const managesChild = project.childManagerIds
       ? project.childManagerIds.includes(member._id)
       : project.children?.some((child) =>
-          child.members.some(
-            (candidate) =>
-              typeof candidate !== "string" &&
-              candidate._id === member._id &&
-              candidate.role === "MANAGER",
-          ),
+          "managerId" in child
+            ? child.managerId === member._id
+            : child.members.some(
+                (candidate) =>
+                  typeof candidate !== "string" &&
+                  candidate._id === member._id &&
+                  candidate.role === "MANAGER",
+              ),
         );
     if (managesChild) return "MANAGER";
   }
@@ -40,16 +48,28 @@ export function memberDisplayRole(project: Project, member: User): ProjectRole {
   );
 }
 
-export function orderedProjectMembers(project: Project): User[] {
+export function orderedProjectMembers(
+  project: Project,
+  currentUserId = "",
+): User[] {
   return project.members
     .filter((member): member is User => typeof member !== "string")
     .sort(
-      (left, right) =>
-        memberRoleOrder[memberDisplayRole(project, left)] -
-          memberRoleOrder[memberDisplayRole(project, right)] ||
-        memberNameOrder.compare(left.name.trim(), right.name.trim()) ||
-        memberNameOrder.compare(left.email, right.email) ||
-        left._id.localeCompare(right._id),
+      (left, right) => {
+        const roleOrder =
+          memberRoleOrder[memberDisplayRole(project, left)] -
+          memberRoleOrder[memberDisplayRole(project, right)];
+        if (roleOrder) return roleOrder;
+        const currentUserOrder =
+          Number(right._id === currentUserId) -
+          Number(left._id === currentUserId);
+        return (
+          currentUserOrder ||
+          memberNameOrder.compare(left.name.trim(), right.name.trim()) ||
+          memberNameOrder.compare(left.email, right.email) ||
+          left._id.localeCompare(right._id)
+        );
+      },
     );
 }
 
@@ -81,16 +101,20 @@ export const taskStatusLabels = {
   done: "Hoàn thành",
   overdue: "Quá hạn",
 };
-export function managedProjectsForMember(project: Project, memberId: string) {
-  const projects = project.parentProject
-    ? [project]
-    : [project, ...(project.children || [])];
-  return projects.filter((item) =>
-    item.members.some(
-      (member) =>
-        idOf(member) === memberId &&
-        typeof member !== "string" &&
-        member.role === "MANAGER",
-    ),
+export function managedProjectsForMember(
+  project: Project,
+  memberId: string,
+): Array<Project | ProjectChildSummary> {
+  if (project.parentProject)
+    return project.manager === memberId ? [project] : [];
+  return (project.children || []).filter((child) =>
+    "managerId" in child
+      ? child.managerId === memberId
+      : child.members.some(
+          (member) =>
+            idOf(member) === memberId &&
+            typeof member !== "string" &&
+            member.role === "MANAGER",
+        ),
   );
 }

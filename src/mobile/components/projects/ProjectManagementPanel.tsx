@@ -8,7 +8,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { api, json, type Project, type User } from "../../services/api.ts";
+import {
+  api,
+  json,
+  type Project,
+  type ProjectChildSummary,
+  type User,
+} from "../../services/api.ts";
 import {
   idOf,
   managedProjectsForMember,
@@ -21,6 +27,7 @@ import { styles as s } from "../../styles/projectManagement.ts";
 
 type Props = {
   project: Project;
+  currentUserId: string;
   section: "members" | "management";
   onChanged: () => Promise<unknown>;
   onOpenProject: (projectId: string) => void;
@@ -85,6 +92,7 @@ function Picker({
 }
 export default function ProjectManagementPanel({
   project,
+  currentUserId,
   section,
   onChanged,
   onOpenProject,
@@ -94,9 +102,8 @@ export default function ProjectManagementPanel({
   const [email, setEmail] = useState("");
   const [memberError, setMemberError] = useState("");
   const [selectedMember, setSelectedMember] = useState("");
-  const [childName, setChildName] = useState("");
-  const [childManager, setChildManager] = useState("");
   const [manager, setManager] = useState("");
+  const [appoint, setAppoint] = useState<User | null>(null);
   const [remove, setRemove] = useState<User | null>(null);
   const [replacements, setReplacements] = useState<Record<string, string>>({});
   const [reassign, setReassign] = useState("");
@@ -104,7 +111,10 @@ export default function ProjectManagementPanel({
   const [projectName, setProjectName] = useState(project.name);
   const [description, setDescription] = useState(project.description || "");
   const [restoreChildren, setRestoreChildren] = useState(false);
-  const members = orderedProjectMembers(project);
+  const members = orderedProjectMembers(project, currentUserId);
+  const children = (project.children || []).filter(
+    (child): child is ProjectChildSummary => "managerId" in child,
+  );
   const rootMembers = (
     project.parentProject ? root?.members || [] : project.members
   ).filter((m): m is User => typeof m !== "string");
@@ -276,12 +286,24 @@ export default function ProjectManagementPanel({
         )}
         <View style={s.memberList}>
           {members.map((member) => {
+            const displayRole = memberDisplayRole(project, member);
+            const isCurrentUser = member._id === currentUserId;
+            const canReplaceManager =
+              project.myRole === "DIRECTOR" ||
+              project.permissions.appointManager;
             const canRemove =
               writable &&
               project.permissions.manageMembers &&
               member._id !== idOf(project.owner) &&
-              member.role !== "DIRECTOR" &&
-              (member.role !== "MANAGER" || project.permissions.appointManager);
+              displayRole !== "DIRECTOR" &&
+              (displayRole !== "MANAGER" || canReplaceManager);
+            const canAppoint =
+              writable &&
+              project.kind === "hierarchical" &&
+              !project.parentProject &&
+              project.permissions.createChildren &&
+              displayRole !== "DIRECTOR" &&
+              children.length > 0;
             return (
               <View key={member._id} style={s.memberCard}>
                 <View style={s.memberAvatar}>
@@ -297,28 +319,48 @@ export default function ProjectManagementPanel({
                     </Text>
                     <View style={s.memberRoleBadge}>
                       <Text style={s.memberRoleText}>
-                        {roleLabels[memberDisplayRole(project, member)]}
+                        {roleLabels[displayRole]}
                       </Text>
                     </View>
+                    {isCurrentUser && (
+                      <View style={s.memberMeBadge}>
+                        <Text style={s.memberMeText}>Bạn</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={s.memberEmail} numberOfLines={1}>
                     {member.email}
                   </Text>
                 </View>
-                {canRemove && (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Xóa ${member.name} khỏi dự án`}
-                    disabled={busy}
-                    onPress={() => {
-                      setRemove(member);
-                      setReplacements({});
-                      setReassign("");
-                    }}
-                    style={[s.removeMemberButton, busy && s.disabled]}
-                  >
-                    <Text style={s.removeMemberText}>Xóa</Text>
-                  </Pressable>
+                {(canAppoint || canRemove) && (
+                  <View style={s.memberActions}>
+                    {canAppoint && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Bổ nhiệm ${member.name} làm Trưởng phòng`}
+                        disabled={busy}
+                        onPress={() => setAppoint(member)}
+                        style={[s.appointButton, busy && s.disabled]}
+                      >
+                        <Text style={s.appointText}>Bổ nhiệm</Text>
+                      </Pressable>
+                    )}
+                    {canRemove && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Xóa ${member.name} khỏi dự án`}
+                        disabled={busy}
+                        onPress={() => {
+                          setRemove(member);
+                          setReplacements({});
+                          setReassign("");
+                        }}
+                        style={[s.removeMemberButton, busy && s.disabled]}
+                      >
+                        <Text style={s.removeMemberText}>Xóa</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 )}
               </View>
             );
@@ -393,6 +435,60 @@ export default function ProjectManagementPanel({
             </View>
           </View>
         </Modal>
+        <Modal
+          visible={!!appoint}
+          transparent
+          animationType="slide"
+          onRequestClose={() => !busy && setAppoint(null)}
+        >
+          <View style={s.overlay}>
+            <View style={s.modal}>
+              <ScrollView contentContainerStyle={s.modalContent}>
+                <Text style={s.heading}>
+                  Bổ nhiệm {appoint?.name} làm Trưởng phòng
+                </Text>
+                <Text style={s.muted}>
+                  Chọn dự án con. Người được bổ nhiệm sẽ có quyền quản lý task và
+                  thành viên trong dự án đó.
+                </Text>
+                {children.map((child) => (
+                  <Pressable
+                    key={child._id}
+                    accessibilityRole="button"
+                    disabled={busy || child.archived}
+                    onPress={() =>
+                      void run(async () => {
+                        await api(
+                          `/projects/${child._id}/manager`,
+                          json("PUT", {
+                            userId: appoint!._id,
+                            version: child.version,
+                          }),
+                        );
+                        setAppoint(null);
+                      })
+                    }
+                    style={[
+                      s.card,
+                      (busy || child.archived) && s.disabled,
+                    ]}
+                  >
+                    <Text style={s.strong}>{child.name}</Text>
+                    <Text style={s.muted}>
+                      Hiện tại: {child.manager?.name || "Chưa có Trưởng phòng"}
+                      {child.archived ? " · Đã lưu trữ" : ""}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Action
+                  title="Hủy"
+                  disabled={busy}
+                  onPress={() => setAppoint(null)}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </>
     );
   return (
@@ -440,68 +536,6 @@ export default function ProjectManagementPanel({
                   }),
                 ),
               )
-            }
-          />
-        </View>
-      )}
-      {!!project.children?.length && (
-        <>
-          <Text style={s.heading}>Dự án con</Text>
-          {project.children.map((child) => (
-            <Pressable
-              style={s.card}
-              key={child._id}
-              onPress={() => onOpenProject(child._id)}
-            >
-              <Text style={s.strong}>{child.name}</Text>
-              <Text style={s.muted}>
-                {roleLabels[child.myRole]}
-                {child.archived ? " · Đã lưu trữ" : ""}
-              </Text>
-            </Pressable>
-          ))}
-        </>
-      )}
-      {project.permissions.createChildren && writable && (
-        <View style={s.card}>
-          <Text style={s.heading}>Tạo dự án con</Text>
-          <TextInput
-            style={s.input}
-            value={childName}
-            onChangeText={setChildName}
-            placeholder="Tên dự án con"
-            placeholderTextColor="#64748b"
-          />
-          <Text style={s.strong}>Bổ nhiệm Trưởng phòng</Text>
-          <MemberDropdown
-            users={rootMembers.filter((m) => m.role !== "DIRECTOR")}
-            value={childManager}
-            onChange={setChildManager}
-            disabled={busy}
-          />
-          <Action
-            title="Tạo dự án con"
-            disabled={
-              busy ||
-              !childName.trim() ||
-              !rootMembers.some(
-                (m) => m._id === childManager && m.role !== "DIRECTOR",
-              )
-            }
-            onPress={() =>
-              void run(async () => {
-                const child = await api<Project>(
-                  `/projects/${project._id}/children`,
-                  json("POST", {
-                    name: childName.trim(),
-                    managerId: childManager,
-                    version: project.version,
-                  }),
-                );
-                setChildName("");
-                setChildManager("");
-                onOpenProject(child._id);
-              })
             }
           />
         </View>

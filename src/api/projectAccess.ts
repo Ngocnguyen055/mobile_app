@@ -1,5 +1,10 @@
 import mongoose, { type ClientSession } from "mongoose";
-import { Project, ProjectMember, User } from "./models.ts";
+import {
+  ChatGroupRecord,
+  Project,
+  ProjectMember,
+  User,
+} from "./models.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -48,13 +53,14 @@ export function permissionsForProject(
   const independent = kind !== "hierarchical";
   const owner = role === "OWNER";
   const director = role === "DIRECTOR";
-  const manager = isChild && role === "MANAGER";
+  const manager = role === "MANAGER";
+  const childManager = isChild && manager;
   return {
     manageMembers: independent ? owner : director || manager,
-    manageTasks: independent ? true : director || manager,
-    manageProject: independent ? owner : director || manager,
-    moderate: independent ? owner : director || manager,
-    manageResources: independent ? owner : director || manager,
+    manageTasks: independent ? true : director || childManager,
+    manageProject: independent ? owner : director || childManager,
+    moderate: independent ? owner : director || childManager,
+    manageResources: independent ? owner : director || childManager,
     createChildren: !independent && !isChild && director,
     appointManager: !independent && isChild && director,
   };
@@ -83,15 +89,24 @@ export async function projectAccess(
   if (independent) role = idOf(project.owner) === userId ? "OWNER" : "MEMBER";
   else if (director) role = "DIRECTOR";
   else {
-    const membership = await ProjectMember.findOne({
-      project: project._id,
-      user: userId,
-    }).session(session ?? null);
+    const [membership, managesChild] = await Promise.all([
+      ProjectMember.findOne({
+        project: project._id,
+        user: userId,
+      }).session(session ?? null),
+      project.parentProject
+        ? Promise.resolve(null)
+        : Project.exists({
+            parentProject: project._id,
+            manager: userId,
+          }).session(session ?? null),
+    ]);
     // Manager mirror allows old schema hydration during the explicit migration only.
     role =
-      project.parentProject &&
-      membership?.role === "MANAGER" &&
-      idOf(project.manager) === userId
+      managesChild ||
+      (project.parentProject &&
+        membership?.role === "MANAGER" &&
+        idOf(project.manager) === userId)
         ? "MANAGER"
         : "EMPLOYEE";
   }
@@ -242,16 +257,20 @@ export async function projectDto(access: ProjectAccess) {
   };
 }
 
-export async function getProjectChatGroup(groupId: string) {
-  const project = await Project.findOne({ chatGroupId: groupId });
-  if (!project) return null;
-  const root = project.parentProject
-    ? await Project.findById(project.parentProject)
-    : project;
-  if (!root) return null;
+function projectChatGroupDto(
+  project: ProjectDocument,
+  root: ProjectDocument,
+  group: {
+    id: string;
+    name: string;
+    isDefault: boolean;
+    deleted?: boolean;
+  },
+) {
   const rootMembers = new Set(projectMemberIds(root));
   return {
-    id: groupId,
+    ...group,
+    deleted: !!group.deleted,
     ownerId: idOf(project.manager || root.owner),
     members: projectMemberIds(project).filter(
       (id) => rootMembers.has(id) || id === idOf(root.owner),
@@ -260,6 +279,54 @@ export async function getProjectChatGroup(groupId: string) {
     projectId: idOf(project._id),
     archived: !!project.archived || !!root.archived,
   };
+}
+
+export async function listProjectChatGroups(access: ProjectAccess) {
+  const rows = await ChatGroupRecord.find({
+    project: access.project._id,
+    deletedAt: null,
+  }).sort({ createdAt: 1, _id: 1 });
+  return [
+    projectChatGroupDto(access.project, access.root, {
+      id: access.project.chatGroupId!,
+      name: "Chung",
+      isDefault: true,
+    }),
+    ...rows.map((row) =>
+      projectChatGroupDto(access.project, access.root, {
+        id: row.groupId,
+        name: row.name,
+        isDefault: false,
+      }),
+    ),
+  ];
+}
+
+export async function getProjectChatGroup(groupId: string) {
+  let project = await Project.findOne({ chatGroupId: groupId });
+  let group = {
+    id: groupId,
+    name: "Chung",
+    isDefault: true,
+    deleted: false,
+  };
+  if (!project) {
+    const stored = await ChatGroupRecord.findOne({ groupId });
+    if (!stored) return null;
+    project = await Project.findById(stored.project);
+    if (!project) return null;
+    group = {
+      id: stored.groupId,
+      name: stored.name,
+      isDefault: false,
+      deleted: !!stored.deletedAt,
+    };
+  }
+  const root = project.parentProject
+    ? await Project.findById(project.parentProject)
+    : project;
+  if (!root) return null;
+  return projectChatGroupDto(project, root, group);
 }
 
 export function effectiveTaskStatus(

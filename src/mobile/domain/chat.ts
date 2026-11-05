@@ -41,6 +41,8 @@ export type DirectChatContact = {
 
 export type ChatGroup = {
   id: string;
+  name: string;
+  isDefault: boolean;
   ownerId: string;
   members: string[];
   version: number;

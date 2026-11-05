@@ -14,6 +14,7 @@ type ProjectToolbarProps = {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onBack: () => void;
+  onOpenParent: () => void;
   onSelectTab: (tab: ProjectTab) => void;
 };
 
@@ -24,17 +25,34 @@ function ProjectToolbar({
   onOpenDrawer,
   onCloseDrawer,
   onBack,
+  onOpenParent,
   onSelectTab,
 }: ProjectToolbarProps) {
+  const hierarchyRoot =
+    project.kind === "hierarchical" && !project.parentProject;
+  const displayedTab =
+    hierarchyRoot && (tab === "tasks" || tab === "progress")
+      ? "overview"
+      : tab;
+  const visibleTabs = (Object.keys(projectTabLabels) as ProjectTab[]).filter(
+    (item) =>
+      hierarchyRoot
+        ? item !== "tasks" && item !== "progress"
+        : item !== "overview" && item !== "children",
+  );
   return (
     <View style={[styles.contextToolbar, styles.projectToolbar]}>
       <View style={styles.projectTitleRow}>
         <Button label="☰" onPress={onOpenDrawer} secondary />
-        <Button label="← Danh sách" onPress={onBack} secondary />
+        <Button
+          label={project.parentProject ? "← Dự án cha" : "← Danh sách"}
+          onPress={project.parentProject ? onOpenParent : onBack}
+          secondary
+        />
         <Text style={styles.contextTitle}>{project.name}</Text>
       </View>
       <Text style={styles.contextSubtitle}>
-        {projectTabLabels[tab]} · {roleLabels[project.myRole]}
+        {projectTabLabels[displayedTab]} · {roleLabels[project.myRole]}
         {project.archived ? " · Đã lưu trữ (chỉ xem)" : ""}
       </Text>
       <Modal
@@ -48,24 +66,35 @@ function ProjectToolbar({
             <Text style={styles.contextTitle}>{project.name}</Text>
             <Text style={styles.muted}>{roleLabels[project.myRole]}</Text>
             <ScrollView contentContainerStyle={styles.drawerItems}>
-              {(Object.keys(projectTabLabels) as ProjectTab[]).map((item) => (
+              {visibleTabs.map((item) => (
                 <Pressable
                   key={item}
                   accessibilityRole="button"
-                  style={[styles.drawerItem, tab === item && styles.activeTab]}
+                  style={[
+                    styles.drawerItem,
+                    displayedTab === item && styles.activeTab,
+                  ]}
                   onPress={() => onSelectTab(item)}
                 >
                   <Text
                     style={[
                       styles.drawerItemText,
-                      tab === item && styles.activeTabText,
+                      displayedTab === item && styles.activeTabText,
                     ]}
                   >
                     {projectTabLabels[item]}
                   </Text>
                 </Pressable>
               ))}
-              <Button label="← Danh sách dự án" onPress={onBack} secondary />
+              <Button
+                label={
+                  project.parentProject
+                    ? "← Quay lại dự án cha"
+                    : "← Danh sách dự án"
+                }
+                onPress={project.parentProject ? onOpenParent : onBack}
+                secondary
+              />
             </ScrollView>
             <Button label="Đóng" onPress={onCloseDrawer} secondary />
           </View>

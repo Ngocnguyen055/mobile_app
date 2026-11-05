@@ -7,14 +7,18 @@ import { styles } from "../../styles/app.ts";
 type ChatToolbarProps = {
   contact: ChatContact | null;
   blocked: boolean;
+  refreshing: boolean;
   onBack: () => void;
+  onRefresh: () => void;
   onOpenInfo: () => void;
 };
 
 function ChatToolbar({
   contact,
   blocked,
+  refreshing,
   onBack,
+  onRefresh,
   onOpenInfo,
 }: ChatToolbarProps) {
   return (
@@ -38,6 +42,20 @@ function ChatToolbar({
               </Text>
             </View>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Làm mới tin nhắn"
+            disabled={refreshing}
+            onPress={onRefresh}
+            style={[
+              styles.chatHeaderIconButton,
+              refreshing && styles.disabled,
+            ]}
+          >
+            <Text style={styles.chatRefreshIcon}>
+              {refreshing ? "…" : "↻"}
+            </Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Thông tin cuộc trò chuyện"

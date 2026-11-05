@@ -188,6 +188,81 @@ describe("project hierarchy mutations", () => {
     expect(response.status).toBe(400);
     expect(ProjectMember.updateOne).not.toHaveBeenCalled();
   });
+  it("lets the director appoint a root member as child manager", async () => {
+    const response = await patch(
+      `/projects/${childId}/manager`,
+      { userId: employee, version: 4 },
+      "PUT",
+    );
+
+    expect(response.status).toBe(200);
+    const membershipCalls = vi.mocked(ProjectMember.updateOne).mock.calls;
+    expect(String(membershipCalls[0][0].user)).toBe(manager);
+    expect(membershipCalls[0][1]).toEqual({ $set: { role: "EMPLOYEE" } });
+    expect(String(membershipCalls[1][0].user)).toBe(employee);
+    expect(membershipCalls[1][1]).toEqual({ $set: { role: "MANAGER" } });
+    expect(Project.updateOne).toHaveBeenCalledWith(
+      { _id: current.project._id },
+      { $set: { manager: employee } },
+      { session },
+    );
+  });
+  it("lets a child manager remove a regular member from the root project", async () => {
+    current.project = current.root;
+    current.role = "MANAGER";
+    current.permissions = accessModule.permissionsForProject(
+      "hierarchical",
+      false,
+      "MANAGER",
+    );
+    vi.spyOn(Project, "find").mockReturnValue(
+      query([]) as unknown as ReturnType<typeof Project.find>,
+    );
+
+    const response = await patch(
+      `/projects/${rootId}/members/${employee}`,
+      {},
+      "DELETE",
+    );
+
+    expect(response.status).toBe(200);
+    expect(ProjectMember.deleteOne).toHaveBeenCalledWith(
+      { project: current.root._id, user: employee },
+      { session },
+    );
+  });
+  it("lets a child manager add a registered user to the root project", async () => {
+    current.project = current.root;
+    current.role = "MANAGER";
+    current.permissions = accessModule.permissionsForProject(
+      "hierarchical",
+      false,
+      "MANAGER",
+    );
+    vi.spyOn(User, "findOne").mockReturnValue(
+      query(
+        new User({
+          _id: outsider,
+          name: "Out",
+          email: "out@example.test",
+          passwordHash: "hash",
+        }),
+      ) as unknown as ReturnType<typeof User.findOne>,
+    );
+
+    const response = await patch(
+      `/projects/${rootId}/members`,
+      { email: "out@example.test" },
+      "POST",
+    );
+
+    expect(response.status).toBe(200);
+    expect(ProjectMember.updateOne).toHaveBeenCalledWith(
+      { project: current.root._id, user: outsider },
+      { $set: { role: "EMPLOYEE" } },
+      { upsert: true, session },
+    );
+  });
   it("removing root manager requires explicit replacements before any member/task deletion", async () => {
     const child = current.project;
     current.project = current.root;
@@ -268,6 +343,81 @@ describe("project hierarchy mutations", () => {
     });
     expect(restore.status).toBe(200);
     expect(Project.updateMany).not.toHaveBeenCalled();
+  });
+  it("returns every child summary while marking inaccessible projects as locked", async () => {
+    const openChild = current.project;
+    const lockedChild = new Project({
+      _id: "200000000000000000000003",
+      name: "Locked child",
+      owner: director,
+      kind: "hierarchical",
+      parentProject: rootId,
+      manager: employee,
+      members: [director, employee],
+      version: 2,
+    });
+    current.project = current.root;
+    current.permissions = accessModule.permissionsForProject(
+      "hierarchical",
+      false,
+      "DIRECTOR",
+    );
+    vi.spyOn(accessModule, "accessibleProjectIds").mockResolvedValue([
+      rootId,
+      childId,
+    ]);
+    vi.spyOn(Project, "find").mockReturnValue({
+      sort: async () => [openChild, lockedChild],
+    } as never);
+    vi.spyOn(Task, "find").mockReturnValue({
+      select: () => ({
+        lean: async () => [
+          { project: openChild._id, status: "done", dueAt: null },
+          {
+            project: lockedChild._id,
+            status: "todo",
+            dueAt: new Date(0),
+          },
+        ],
+      }),
+    } as never);
+    vi.spyOn(User, "find").mockReturnValue({
+      select: () => ({
+        lean: async () => [
+          { _id: manager, name: "Manager", email: "manager@example.test" },
+          { _id: employee, name: "Employee", email: "employee@example.test" },
+        ],
+      }),
+    } as never);
+
+    const response = await fetch(`${url}/projects/${rootId}`);
+    const body = (await response.json()) as {
+      children: Array<{
+        _id: string;
+        accessible: boolean;
+        managerId: string;
+        memberCount: number;
+        progress: { percent: number; overdue: number };
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.children).toMatchObject([
+      {
+        _id: childId,
+        accessible: true,
+        managerId: manager,
+        memberCount: 2,
+        progress: { percent: 100, overdue: 0 },
+      },
+      {
+        _id: "200000000000000000000003",
+        accessible: false,
+        managerId: employee,
+        memberCount: 2,
+        progress: { percent: 0, overdue: 1 },
+      },
+    ]);
   });
   it("employees cannot change membership; archived scopes reject renames", async () => {
     current.role = "EMPLOYEE";

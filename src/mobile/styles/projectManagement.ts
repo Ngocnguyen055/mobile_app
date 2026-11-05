@@ -136,6 +136,7 @@ export const styles = StyleSheet.create({
     flexShrink: 1,
   },
   memberEmail: { color: colors.textSoft, fontSize: 11 },
+  memberActions: { alignItems: "flex-end", gap: 5 },
   memberRoleBadge: {
     borderRadius: 8,
     backgroundColor: colors.accentSoft,
@@ -144,6 +145,17 @@ export const styles = StyleSheet.create({
   },
   memberRoleText: {
     color: "#0B7A6D",
+    fontSize: 8,
+    fontWeight: "900",
+  },
+  memberMeBadge: {
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  memberMeText: {
+    color: colors.primaryDark,
     fontSize: 8,
     fontWeight: "900",
   },
@@ -159,6 +171,20 @@ export const styles = StyleSheet.create({
   removeMemberText: {
     color: colors.danger,
     fontSize: 11,
+    fontWeight: "800",
+  },
+  appointButton: {
+    minWidth: 68,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+  },
+  appointText: {
+    color: colors.primaryDark,
+    fontSize: 10,
     fontWeight: "800",
   },
   heading: {

@@ -116,6 +116,7 @@ export function installDirectChatRoutes(app: Express) {
         const group = await getProjectChatGroup(groupResult.data);
         if (!group?.members.includes(req.userId!))
           throw new HttpError(403, "project chat access denied");
+        if (group.deleted) throw new HttpError(410, "chat group was deleted");
         if (group.archived) throw new HttpError(409, "project archived");
         target = {
           receiver: null,

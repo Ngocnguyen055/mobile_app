@@ -1,10 +1,18 @@
 import type { Express, Request } from "express";
 import mongoose, { type ClientSession } from "mongoose";
 import { z } from "zod";
-import { Project, ProjectMember, Task, User } from "./models.ts";
+import {
+  ChatGroupRecord,
+  Project,
+  ProjectMember,
+  Task,
+  User,
+} from "./models.ts";
 import { emitNotification } from "./notifications.ts";
 import {
   HttpError,
+  getProjectChatGroup,
+  listProjectChatGroups,
   projectAccess,
   projectDto,
   accessibleProjectIds,
@@ -21,6 +29,10 @@ export { withWritableProject } from "./projectAccess.ts";
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const version = z.number().int().positive().optional();
+const chatGroupId = z.string().uuid();
+const chatGroupInput = z
+  .object({ name: z.string().trim().min(1).max(80) })
+  .strict();
 const projectFields = {
   name: z.string().trim().min(1).max(120),
   description: z.string().max(2000).default(""),
@@ -166,16 +178,66 @@ export function installProjectRoutes(app: Express) {
       access.project.kind === "hierarchical" && !access.project.parentProject
         ? await Project.find({
             parentProject: access.project._id,
-            _id: { $in: await accessibleProjectIds(req.userId!) },
           }).sort({ createdAt: -1, _id: -1 })
         : [];
+    const accessibleIds = new Set(
+      children.length ? await accessibleProjectIds(req.userId!) : [],
+    );
+    const [childTasks, managers] = children.length
+      ? await Promise.all([
+          Task.find({ project: { $in: children.map((child) => child._id) } })
+            .select("project status dueAt")
+            .lean(),
+          User.find({
+            _id: {
+              $in: children.map((child) => child.manager).filter(Boolean),
+            },
+          })
+            .select("name email")
+            .lean(),
+        ])
+      : [[], []];
+    const now = Date.now();
     return res.json({
       ...dto,
-      children: await Promise.all(
-        children.map(async (p) =>
-          projectDto(await projectAccess(p.id, req.userId!)),
-        ),
-      ),
+      children: children.map((child) => {
+        const tasks = childTasks.filter(
+          (task) => idOf(task.project) === child.id,
+        );
+        const done = tasks.filter((task) => task.status === "done").length;
+        const overdue = tasks.filter(
+          (task) => effectiveTaskStatus(task, now) === "overdue",
+        ).length;
+        const managerId = idOf(child.manager);
+        const manager = managers.find(
+          (candidate) => idOf(candidate._id) === managerId,
+        );
+        return {
+          _id: child.id,
+          name: child.name,
+          description: child.description || "",
+          managerId,
+          manager: manager
+            ? {
+                _id: idOf(manager._id),
+                name: manager.name,
+                email: manager.email,
+                role: "MANAGER",
+              }
+            : null,
+          memberCount: projectMemberIds(child).length,
+          archived: !!child.archived || access.archived,
+          version: child.version || 1,
+          accessible: accessibleIds.has(child.id),
+          managedByMe: managerId === req.userId,
+          progress: {
+            total: tasks.length,
+            done,
+            overdue,
+            percent: tasks.length ? Math.round((done * 100) / tasks.length) : 0,
+          },
+        };
+      }),
     });
   });
   app.post("/projects/:projectId/children", async (req, res) => {
@@ -553,6 +615,54 @@ export function installProjectRoutes(app: Express) {
       chatRevision: access.project.chatRevision || 1,
     });
   });
+  app.get("/projects/:projectId/chat-groups", async (req, res) => {
+    const access = await projectAccess(projectId(req), req.userId!);
+    return res.json(await listProjectChatGroups(access));
+  });
+  app.post("/projects/:projectId/chat-groups", async (req, res) => {
+    const input = chatGroupInput.parse(req.body);
+    if (input.name.localeCompare("Chung", "vi", { sensitivity: "base" }) === 0)
+      throw new HttpError(409, "chat group name is reserved");
+    const id = await transaction(async (session) => {
+      const access = await projectAccess(projectId(req), req.userId!, session);
+      requireWritable(access);
+      requirePermission(access, "manageProject");
+      const [created] = await ChatGroupRecord.create(
+        [
+          {
+            project: access.project._id,
+            name: input.name,
+            createdBy: req.userId,
+          },
+        ],
+        { session },
+      );
+      await touchScope(access, session, true);
+      return created.groupId;
+    });
+    return res.status(201).json(await getProjectChatGroup(id));
+  });
+  app.delete(
+    "/projects/:projectId/chat-groups/:groupId",
+    async (req, res) => {
+      const id = chatGroupId.parse(req.params.groupId);
+      await transaction(async (session) => {
+        const access = await projectAccess(projectId(req), req.userId!, session);
+        requireWritable(access);
+        requirePermission(access, "manageProject");
+        if (id === access.project.chatGroupId)
+          throw new HttpError(409, "default chat group cannot be deleted");
+        const deleted = await ChatGroupRecord.findOneAndUpdate(
+          { groupId: id, project: access.project._id, deletedAt: null },
+          { $set: { deletedAt: new Date() } },
+          { new: true, session },
+        );
+        if (!deleted) throw new HttpError(404, "chat group not found");
+        await touchScope(access, session, true);
+      });
+      return res.json({ ok: true });
+    },
+  );
   app.get("/projects/:projectId/progress", async (req, res) => {
     const access = await projectAccess(projectId(req), req.userId!);
     const scopes =

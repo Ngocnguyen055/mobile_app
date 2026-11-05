@@ -2,6 +2,7 @@
 import * as SecureStore from "expo-secure-store";
 import type {
   ChatAttachment,
+  ChatGroup,
   StoredMessage,
 } from "../domain/chat.ts";
 export const API_URL =
@@ -154,6 +155,31 @@ export async function persistGroupChatMessage(
     json("POST", { ...input, groupId }),
   );
 }
+export async function loadProjectChatGroups(
+  projectId: string,
+): Promise<ChatGroup[]> {
+  return api<ChatGroup[]>(
+    `/projects/${encodeURIComponent(projectId)}/chat-groups`,
+  );
+}
+export async function createProjectChatGroup(
+  projectId: string,
+  name: string,
+): Promise<ChatGroup> {
+  return api<ChatGroup>(
+    `/projects/${encodeURIComponent(projectId)}/chat-groups`,
+    json("POST", { name }),
+  );
+}
+export async function deleteProjectChatGroup(
+  projectId: string,
+  groupId: string,
+) {
+  return api<{ ok: true }>(
+    `/projects/${encodeURIComponent(projectId)}/chat-groups/${encodeURIComponent(groupId)}`,
+    json("DELETE"),
+  );
+}
 export type ChatSyncPage = {
   items: StoredMessage[];
   nextCursor: string | null;
@@ -177,6 +203,24 @@ export async function deleteStoredDirectConversation(userId: string) {
   );
 }
 export type ProjectSummary = { _id: string; name: string };
+export type ProjectChildSummary = {
+  _id: string;
+  name: string;
+  description: string;
+  managerId: string;
+  manager: User | null;
+  memberCount: number;
+  archived: boolean;
+  version: number;
+  accessible: boolean;
+  managedByMe: boolean;
+  progress: {
+    total: number;
+    done: number;
+    overdue: number;
+    percent: number;
+  };
+};
 export type Project = {
   _id: string;
   createdAt?: string;
@@ -191,9 +235,10 @@ export type Project = {
   spentBudget: number;
   chatGroupId?: string;
   kind: "independent" | "hierarchical";
+  manager?: string | null;
   parentProject: string | null;
   rootProject: string;
-  children?: Project[];
+  children?: Array<ProjectChildSummary | Project>;
   childManagerIds?: string[];
   myRole: ProjectRole;
   version: number;

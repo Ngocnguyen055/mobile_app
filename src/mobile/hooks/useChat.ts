@@ -12,9 +12,12 @@ import {
 
 import {
   ApiError,
+  createProjectChatGroup,
+  deleteProjectChatGroup,
   deleteStoredDirectConversation,
   loadBlockedChatUsers,
   loadChatUser,
+  loadProjectChatGroups,
   markStoredChatMessagesRead,
   persistDirectChatMessage,
   persistGroupChatMessage,
@@ -42,6 +45,8 @@ export function chatGroupForProject(project: Project): ChatGroup | null {
   if (!project.chatGroupId) return null;
   return {
     id: project.chatGroupId,
+    name: "Chung",
+    isDefault: true,
     ownerId: project.owner,
     members: [
       ...new Set(
@@ -65,7 +70,8 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
-  const [group, setGroup] = useState<ChatGroup | null>(null);
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [group, setGroupState] = useState<ChatGroup | null>(null);
   const [messageBody, setMessageBody] = useState("");
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
@@ -82,13 +88,32 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   const [directSending, setDirectSending] = useState(false);
   const [directUploading, setDirectUploading] = useState(false);
   const [groupUploading, setGroupUploading] = useState(false);
+  const [groupConversationOpen, setGroupConversationOpen] = useState(false);
   const [directInfoVisible, setDirectInfoVisible] = useState(false);
   const directSendingRef = useRef(false);
+  const groupRef = useRef<ChatGroup | null>(null);
   const store = useRef<MobileStore | null>(null);
   const directContactRef = useRef<ChatContact | null>(null);
   const directOpenRequest = useRef(0);
   const chatSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatSyncing = useRef(false);
+
+  const setGroup = (next: ChatGroup | null) => {
+    groupRef.current = next;
+    setGroupState(next);
+  };
+
+  const setProjectGroups = (rows: ChatGroup[]) => {
+    setGroups(rows);
+    const current = groupRef.current;
+    const selected =
+      rows.find((row) => row.id === current?.id) ||
+      rows.find((row) => row.isDefault) ||
+      rows[0] ||
+      null;
+    setGroup(selected);
+    return selected;
+  };
 
   const createPersistentInput = (
     body: string,
@@ -579,42 +604,139 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     await Sharing.shareAsync(uri, { mimeType: attachment.mime });
   };
 
+  const markGroupRead = async (selected: ChatGroup) => {
+    const local = store.current;
+    if (!local) return;
+    const unread = (await local.list())
+      .filter(
+        (row) =>
+          row.message.groupId === selected.id &&
+          row.message.senderId !== user?._id,
+      )
+      .map((row) => row.message.messageId);
+    if (unread.length) await markStoredChatMessagesRead(unread);
+  };
+
+  const selectProjectGroup = async (selected: ChatGroup) => {
+    const currentProject = projectRef.current;
+    if (!currentProject || selected.projectId !== currentProject._id)
+      throw new Error("Nhóm chat không thuộc dự án hiện tại.");
+    setGroup(selected);
+    setMessageBody("");
+    setGroupConversationOpen(true);
+    try {
+      await syncPersistentChat();
+      await markGroupRead(selected);
+    } catch {
+      /* The selected group's SQLite history remains available offline. */
+    }
+  };
+
+  const closeProjectGroupConversation = () => {
+    setGroupConversationOpen(false);
+    setMessageBody("");
+  };
+
   const ensureGroup = async () => {
     const currentProject = projectRef.current;
     if (!currentProject) return null;
-    const currentGroup = chatGroupForProject(currentProject);
+    let currentGroup = groupRef.current;
+    try {
+      currentGroup = setProjectGroups(
+        await loadProjectChatGroups(currentProject._id),
+      );
+    } catch {
+      if (!currentGroup || currentGroup.projectId !== currentProject._id) {
+        const fallback = chatGroupForProject(currentProject);
+        setProjectGroups(fallback ? [fallback] : []);
+        currentGroup = fallback;
+      }
+    }
     if (!currentGroup) return null;
-    if (projectRef.current?._id === currentProject._id) setGroup(currentGroup);
     try {
       await syncPersistentChat();
-      const local = store.current;
-      if (local) {
-        const unread = (await local.list())
-          .filter(
-            (row) =>
-              row.message.groupId === currentGroup.id &&
-              row.message.senderId !== user?._id,
-          )
-          .map((row) => row.message.messageId);
-        if (unread.length) void markStoredChatMessagesRead(unread);
-      }
+      await markGroupRead(currentGroup);
     } catch {
       /* Project chat can still display the SQLite cache. */
     }
     return currentGroup;
   };
 
+  const createProjectGroup = async (name: string) => {
+    const currentProject = projectRef.current;
+    const value = name.trim();
+    if (!currentProject) throw new Error("Hãy mở một dự án trước.");
+    if (!value) throw new Error("Hãy nhập tên nhóm.");
+    if (currentProject.archived)
+      throw new Error("Dự án đã lưu trữ chỉ được xem.");
+    const created = await createProjectChatGroup(currentProject._id, value);
+    setProjectGroups([...groups, created]);
+    setGroup(created);
+    setMessageBody("");
+    try {
+      const rows = await loadProjectChatGroups(currentProject._id);
+      setProjectGroups(rows);
+      const selected = rows.find((row) => row.id === created.id) || created;
+      setGroup(selected);
+      return selected;
+    } catch {
+      return created;
+    }
+  };
+
+  const deleteProjectGroup = async (selected: ChatGroup) => {
+    const currentProject = projectRef.current;
+    if (!currentProject || selected.projectId !== currentProject._id)
+      throw new Error("Nhóm chat không thuộc dự án hiện tại.");
+    if (selected.isDefault) throw new Error("Không thể xóa nhóm Chung.");
+    if (groupRef.current?.id === selected.id)
+      setGroupConversationOpen(false);
+    await deleteProjectChatGroup(currentProject._id, selected.id);
+    const remaining = groups.filter((row) => row.id !== selected.id);
+    const fallback = setProjectGroups(remaining);
+    const local = store.current;
+    if (local) {
+      for (const item of await local.listChatOutbox()) {
+        if (item.targetKind !== "group" || item.targetId !== selected.id)
+          continue;
+        const affected = (await local.list()).filter(
+          (row) =>
+            row.message.groupId === selected.id &&
+            row.message.messageId === item.payload.messageId,
+        );
+        for (const row of affected)
+          await local.mark(
+            row.message.messageId,
+            row.message.receiverId,
+            "failed",
+          );
+        await local.removeChatOutbox(item.id);
+      }
+    }
+    setMessageBody("");
+    try {
+      return setProjectGroups(
+        await loadProjectChatGroups(currentProject._id),
+      );
+    } catch {
+      return fallback;
+    }
+  };
+
   const queueGroupMessage = async (
     body: string,
     attachments: ChatAttachment[] = [],
   ) => {
-    if (!group || !store.current)
+    const selectedGroup = groupRef.current;
+    if (!selectedGroup || !store.current)
       throw new Error("Nhóm chưa sẵn sàng");
     const currentProject = projectRef.current;
     if (!currentProject || currentProject.archived)
       throw new Error("Dự án đã lưu trữ chỉ được xem.");
     const currentGroup = await ensureGroup();
     if (!currentGroup) throw new Error("Nhóm chưa sẵn sàng");
+    if (currentGroup.id !== selectedGroup.id)
+      throw new Error("Nhóm vừa bị xóa hoặc không còn khả dụng.");
     const input = createPersistentInput(body, attachments);
     const recipients = currentGroup.members.filter((id) => id !== user?._id);
     if (!recipients.length) throw new Error("Nhóm chưa có người nhận khác.");
@@ -656,7 +778,8 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   };
 
   const pickAndSendGroupAttachments = async () => {
-    if (!group) throw new Error("Nhóm chưa sẵn sàng.");
+    const selectedGroup = groupRef.current;
+    if (!selectedGroup) throw new Error("Nhóm chưa sẵn sàng.");
     if (groupUploading) return;
     const result = await DocumentPicker.getDocumentAsync({
       multiple: true,
@@ -675,7 +798,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     setGroupUploading(true);
     try {
       const attachments = await uploadGroupChatAttachments(
-        group.id,
+        selectedGroup.id,
         result.assets,
       );
       await queueGroupMessage(messageBody, attachments);
@@ -697,6 +820,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
   const resetChatState = () => {
     disposeChat();
     setMessages([]);
+    setGroups([]);
     setGroup(null);
     setLogs([]);
     setChatContacts([]);
@@ -711,12 +835,15 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     setDirectSending(false);
     setDirectUploading(false);
     setGroupUploading(false);
+    setGroupConversationOpen(false);
     setDirectInfoVisible(false);
   };
 
   return {
+    groups,
     group,
     setGroup,
+    setProjectGroups,
     messageBody,
     setMessageBody,
     messages,
@@ -738,6 +865,7 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     directSending,
     directUploading,
     groupUploading,
+    groupConversationOpen,
     directInfoVisible,
     setDirectInfoVisible,
     initializeChat,
@@ -754,6 +882,10 @@ export function useChat({ user, projectRef, onError }: UseChatOptions) {
     pickAndSendDirectAttachments,
     pickAndSendGroupAttachments,
     downloadChatAttachment,
+    selectProjectGroup,
+    closeProjectGroupConversation,
+    createProjectGroup,
+    deleteProjectGroup,
     ensureGroup,
     sendChat,
   };
