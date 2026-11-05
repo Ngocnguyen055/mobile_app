@@ -1,104 +1,32 @@
-import React, { memo, useState } from "react";
+import { memo, useState } from "react";
 import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { groupStyles } from "../../styles/projectChat.ts";
+import {
+  groupDeliveryLabel,
+  groupMessagesForDisplay,
+  latestGroupMessage,
+  messagePreview,
+  userName,
+} from "../../utils/groupMessages.ts";
+import GroupInfoModal from "../chat/GroupInfoModal.tsx";
 
 import type {
   ChatAttachment,
   ChatGroup,
   StoredMessage,
 } from "../../domain/chat.ts";
-import { type User } from "../../services/api.ts";
 import { styles } from "../../styles/app.ts";
-import { cardShadow, colors } from "../../styles/theme.ts";
+import { colors } from "../../styles/theme.ts";
+import type { User } from "../../types/api.ts";
 import { formatViDateTime } from "../../utils/calendar.ts";
 import CachedChatImage from "../chat/CachedChatImage.tsx";
-
-const statusLabel = {
-  pending: "Đang gửi",
-  queued: "Đã gửi",
-  sent: "Đã gửi",
-  delivered: "Đã nhận",
-  read: "Đã xem",
-  failed: "Không giao được",
-  received: "Đã nhận",
-} as const;
-
-function groupMessagesForDisplay(
-  messages: StoredMessage[],
-  group: ChatGroup | null,
-  currentUserId: string,
-) {
-  if (!group) return [];
-  const rowsByMessage = new Map<string, StoredMessage[]>();
-  for (const row of messages) {
-    const message = row.message;
-    if (message.groupId !== group.id) continue;
-    const outgoing = message.senderId === currentUserId;
-    if (outgoing && !group.members.includes(message.receiverId)) continue;
-    const key = outgoing
-      ? `${message.messageId}:${message.senderId}`
-      : `${message.messageId}:${message.senderId}:${message.receiverId}`;
-    rowsByMessage.set(key, [...(rowsByMessage.get(key) || []), row]);
-  }
-  return [...rowsByMessage.values()].sort(
-    (left, right) =>
-      left[0].message.timestamp - right[0].message.timestamp ||
-      left[0].message.messageId.localeCompare(right[0].message.messageId),
-  );
-}
-
-function latestGroupMessage(messages: StoredMessage[], groupId: string) {
-  return messages
-    .filter((row) => row.message.groupId === groupId)
-    .sort(
-      (left, right) =>
-        left.message.timestamp - right.message.timestamp ||
-        left.message.messageId.localeCompare(right.message.messageId),
-    )
-    .at(-1);
-}
-
-function groupDeliveryLabel(rows: StoredMessage[], outgoing: boolean) {
-  if (!outgoing) return statusLabel[rows[0].status];
-  const total = rows.length;
-  const read = rows.filter((row) => row.status === "read").length;
-  const delivered = rows.filter((row) =>
-    ["delivered", "read"].includes(row.status),
-  ).length;
-  const failed = rows.filter((row) => row.status === "failed").length;
-  if (read === total) return `Đã xem ${read}/${total}`;
-  if (delivered === total) return `Đã nhận ${delivered}/${total}`;
-  if (failed === total) return "Không giao được";
-  return `${delivered}/${total} đã nhận${failed ? ` · ${failed} lỗi` : ""}`;
-}
-
-function userName(members: User[], userId: string) {
-  return members.find((member) => member._id === userId)?.name || "Thành viên";
-}
-
-function messagePreview(
-  row: StoredMessage | undefined,
-  members: User[],
-  currentUserId: string,
-) {
-  if (!row) return "Chưa có tin nhắn";
-  const message = row.message;
-  const prefix =
-    message.senderId === currentUserId
-      ? "Bạn: "
-      : `${userName(members, message.senderId)}: `;
-  if (message.attachments?.length)
-    return `${prefix}📎 ${message.attachments[0].name}`;
-  return `${prefix}${message.body || "Tin nhắn mới"}`;
-}
 
 type ProjectChatTabProps = {
   groups: ChatGroup[];
@@ -141,19 +69,6 @@ function ProjectChatTab({
     messages,
     openedGroup,
     currentUserId,
-  );
-  const attachments = messages
-    .filter((row) => row.message.groupId === openedGroup?.id)
-    .flatMap((row) => row.message.attachments || [])
-    .filter(
-      (attachment, index, rows) =>
-        rows.findIndex((item) => item.id === attachment.id) === index,
-    );
-  const images = attachments.filter((attachment) =>
-    attachment.mime.startsWith("image/"),
-  );
-  const files = attachments.filter(
-    (attachment) => !attachment.mime.startsWith("image/"),
   );
   const sortedGroups = [...groups].sort((left, right) => {
     const leftTime =
@@ -388,121 +303,17 @@ function ProjectChatTab({
         </Pressable>
       </View>
 
-      <Modal
-        animationType="slide"
-        onRequestClose={() => setInfoVisible(false)}
-        transparent
-        visible={infoVisible}
-      >
-        <View style={styles.chatInfoOverlay}>
-          <Pressable
-            accessibilityLabel="Đóng thông tin nhóm chat"
-            onPress={() => setInfoVisible(false)}
-            style={styles.chatInfoBackdrop}
-          />
-          <View style={styles.chatInfoSheet}>
-            <View style={styles.chatInfoHandle} />
-            <View style={styles.chatInfoHeader}>
-              <View style={styles.contactText}>
-                <Text style={styles.contextTitle}>{openedGroup.name}</Text>
-                <Text style={styles.contextSubtitle}>
-                  {openedGroup.members.length} thành viên
-                  {openedGroup.isDefault ? " · Nhóm mặc định" : ""}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Đóng"
-                onPress={() => setInfoVisible(false)}
-                style={styles.chatHeaderIconButton}
-              >
-                <Text style={styles.chatCloseIcon}>×</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              contentContainerStyle={styles.chatInfoContent}
-              nestedScrollEnabled
-            >
-              <Text style={styles.heading}>Ảnh đã gửi</Text>
-              {!images.length && (
-                <Text style={styles.muted}>
-                  Chưa có ảnh trong cuộc trò chuyện.
-                </Text>
-              )}
-              {!!images.length && (
-                <View style={styles.chatImageGrid}>
-                  {images.map((attachment) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Mở ảnh ${attachment.name}`}
-                      key={`group-info-image-${attachment.id}`}
-                      onPress={() => onDownloadAttachment(attachment)}
-                      style={styles.chatImageTile}
-                    >
-                      <CachedChatImage
-                        attachment={attachment}
-                        currentUserId={currentUserId}
-                        resizeMode="cover"
-                        style={styles.chatInfoImage}
-                      />
-                      <Text numberOfLines={1} style={styles.chatImageTileName}>
-                        {attachment.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-
-              <Text style={styles.heading}>Tệp đã gửi</Text>
-              {!files.length && (
-                <Text style={styles.muted}>
-                  Chưa có tệp trong cuộc trò chuyện.
-                </Text>
-              )}
-              {files.map((attachment) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Tải tệp ${attachment.name}`}
-                  key={`group-info-file-${attachment.id}`}
-                  onPress={() => onDownloadAttachment(attachment)}
-                  style={styles.chatInfoFile}
-                >
-                  <Text style={styles.fileAttachmentIcon}>📎</Text>
-                  <View style={styles.contactText}>
-                    <Text numberOfLines={2} style={styles.attachmentName}>
-                      {attachment.name}
-                    </Text>
-                    <Text style={styles.muted}>
-                      {Math.ceil(attachment.size / 1024)} KiB
-                    </Text>
-                  </View>
-                  <Text style={styles.openConversationIcon}>↓</Text>
-                </Pressable>
-              ))}
-
-              <View style={styles.chatInfoActions}>
-                {canManageGroups && !readOnly && !openedGroup.isDefault ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Xóa nhóm ${openedGroup.name}`}
-                    onPress={() => {
-                      setInfoVisible(false);
-                      confirmDeleteGroup(openedGroup);
-                    }}
-                    style={styles.deleteConversationButton}
-                  >
-                    <Text style={styles.deleteConversationText}>Xóa nhóm</Text>
-                  </Pressable>
-                ) : openedGroup.isDefault ? (
-                  <Text style={styles.muted}>
-                    Nhóm Chung là nhóm mặc định và không thể xóa.
-                  </Text>
-                ) : null}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <GroupInfoModal
+        openedGroup={openedGroup}
+        messages={messages}
+        currentUserId={currentUserId}
+        infoVisible={infoVisible}
+        canManageGroups={canManageGroups}
+        readOnly={readOnly}
+        setInfoVisible={setInfoVisible}
+        confirmDeleteGroup={confirmDeleteGroup}
+        onDownloadAttachment={onDownloadAttachment}
+      />
 
       {!visibleMessages.length && (
         <View style={styles.emptyCard}>
@@ -529,7 +340,7 @@ function ProjectChatTab({
                 styles.messageBubble,
                 outgoing ? styles.messageOutgoing : styles.messageIncoming,
                 rows.every((item) => item.status === "failed") &&
-                  styles.messageFailed,
+                styles.messageFailed,
               ]}
             >
               {!outgoing && (
@@ -595,124 +406,5 @@ function ProjectChatTab({
     </>
   );
 }
-
-const groupStyles = StyleSheet.create({
-  listHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  listTitle: { flex: 1, gap: 2 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  refreshButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceMuted,
-  },
-  refreshText: {
-    color: colors.primary,
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: "800",
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primary,
-  },
-  addButtonText: {
-    color: "#FFFFFF",
-    fontSize: 27,
-    lineHeight: 29,
-    fontWeight: "600",
-  },
-  conversationList: { gap: 9 },
-  conversationCard: { ...cardShadow },
-  pressed: { opacity: 0.72 },
-  nameRow: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  defaultBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    backgroundColor: colors.primarySoft,
-  },
-  defaultBadgeText: {
-    color: colors.primaryDark,
-    fontSize: 9,
-    fontWeight: "800",
-  },
-  timeText: { color: colors.textSoft, fontSize: 9, flexShrink: 0 },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 22,
-    backgroundColor: "rgba(15,23,42,0.46)",
-  },
-  creatorModal: {
-    gap: 12,
-    borderRadius: 20,
-    padding: 18,
-    backgroundColor: colors.surface,
-    ...cardShadow,
-  },
-  creatorTitle: { color: colors.text, fontSize: 19, fontWeight: "900" },
-  creatorInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 13,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    color: colors.text,
-    backgroundColor: colors.surfaceMuted,
-  },
-  creatorActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-  cancelButton: { paddingHorizontal: 14, paddingVertical: 11 },
-  cancelText: { color: colors.textSoft, fontWeight: "800" },
-  createButton: {
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    backgroundColor: colors.primary,
-  },
-  createText: { color: "#FFFFFF", fontWeight: "800" },
-  conversationHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 16,
-    padding: 9,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...cardShadow,
-  },
-  smallAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
-  },
-  smallAvatarText: { color: colors.primaryDark, fontWeight: "900" },
-  senderName: { color: colors.primaryDark, fontSize: 11, fontWeight: "800" },
-});
 
 export default memo(ProjectChatTab);

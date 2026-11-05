@@ -1,28 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import type {
-  CalendarEvent,
-  Project,
-  ProjectSummary,
-  Task,
-} from "../../services/api.ts";
-import type { ReminderOffset } from "../../services/local.ts";
-import NativeDateTimeField from "../ui/NativeDateTimeField.tsx";
-import ReminderSelect, { REMINDER_OPTIONS } from "../ui/ReminderSelect.tsx";
-import {
-  effectiveTaskStatus,
-  taskStatusLabels,
-} from "../../domain/projectPolicy.ts";
 import {
   calendarCreatePermissions,
   calendarProjectId,
@@ -30,22 +12,32 @@ import {
   type CalendarScope,
 } from "../../domain/calendarPolicy.ts";
 import {
-  WEEKDAY_LABELS,
-  buildMonthGrid,
-  buildWeekDays,
-  buildYearMonths,
+  effectiveTaskStatus,
+  taskStatusLabels,
+} from "../../domain/projectPolicy.ts";
+import { useCalendarEventEditor } from "../../hooks/useCalendarEventEditor.ts";
+import type { ReminderOffset } from "../../services/local.ts";
+import { styles } from "../../styles/calendar.ts";
+import type {
+  CalendarEvent,
+  Project,
+  ProjectSummary,
+  Task,
+} from "../../types/api.ts";
+import type { EventDraft } from "../../types/index.ts";
+import {
   dateKey,
   formatViCalendarTitle,
   formatViDate,
   formatViDateTime,
   moveCalendarDate,
-  parseViDateTime,
   sameDay,
-  toViDateTimeInput,
   type CalendarMode,
 } from "../../utils/calendar.ts";
-import { styles } from "../../styles/calendar.ts";
-import type { EventDraft } from "../../types/index.ts";
+import { occursBetween, occursOn } from "../../utils/calendarAgenda.ts";
+import { REMINDER_OPTIONS } from "../ui/ReminderSelect.tsx";
+import CalendarGrid from "./CalendarGrid.tsx";
+import EventEditorModal from "./EventEditorModal.tsx";
 
 type Props = {
   tasks: Task[];
@@ -78,13 +70,6 @@ const projectNameOf = (
   if (typeof value !== "string") return value.name;
   return projects.find((project) => project._id === value)?.name || "Dự án";
 };
-function parsedDateOrUndefined(value: string) {
-  try {
-    return parseViDateTime(value);
-  } catch {
-    return undefined;
-  }
-}
 function actionButton(
   label: string,
   action: () => void,
@@ -110,27 +95,6 @@ function actionButton(
     </Pressable>
   );
 }
-function occursOn(event: CalendarEvent, day: Date) {
-  const starts = dateKey(new Date(event.startsAt));
-  const exclusiveEnd = Math.max(
-    new Date(event.endsAt).getTime() - 1,
-    new Date(event.startsAt).getTime(),
-  );
-  const ends = dateKey(new Date(exclusiveEnd));
-  const key = dateKey(day);
-  return starts <= key && key <= ends;
-}
-
-function occursBetween(event: CalendarEvent, startKey: string, endKey: string) {
-  const starts = dateKey(new Date(event.startsAt));
-  const exclusiveEnd = Math.max(
-    new Date(event.endsAt).getTime() - 1,
-    new Date(event.startsAt).getTime(),
-  );
-  const ends = dateKey(new Date(exclusiveEnd));
-  return starts <= endKey && ends >= startKey;
-}
-
 export default function CalendarPanel({
   tasks,
   events,
@@ -152,17 +116,6 @@ export default function CalendarPanel({
 }: Props) {
   const [mode, setMode] = useState<CalendarMode>("month");
   const [selectedDay, setSelectedDay] = useState(new Date());
-  const [editing, setEditing] = useState<CalendarEvent | null>(null);
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState("");
-  const [endsAt, setEndsAt] = useState("");
-  const [allDay, setAllDay] = useState(false);
-  const [eventOffsets, setEventOffsets] = useState<ReminderOffset[]>(
-    defaultReminderOffsets,
-  );
-  const [saving, setSaving] = useState(false);
-  const [editorError, setEditorError] = useState("");
 
   const visibleTasks = useMemo(
     () =>
@@ -183,15 +136,6 @@ export default function CalendarPanel({
     [events, fixedProjectId, scope],
   );
 
-  const cells =
-    mode === "year"
-      ? []
-      : mode === "month"
-        ? buildMonthGrid(selectedDay)
-        : mode === "week"
-          ? buildWeekDays(selectedDay)
-          : [selectedDay];
-  const yearMonths = buildYearMonths(selectedDay);
   const selectedYear = dateKey(selectedDay).slice(0, 4);
   const yearTasks = visibleTasks.filter(
     (task) =>
@@ -208,92 +152,19 @@ export default function CalendarPanel({
   );
   const permissions = calendarCreatePermissions(scope, fixedProjectId);
 
-  const resetEditor = () => {
-    setEditing(null);
-    setEditorVisible(false);
-    setTitle("");
-    setStartsAt("");
-    setEndsAt("");
-    setAllDay(false);
-    setEventOffsets(defaultReminderOffsets);
-    setEditorError("");
-  };
-
-  const beginNew = () => {
-    if (readOnly || !permissions.canCreateEvent) return;
-    const day = formatViDate(selectedDay);
-    const start = parseViDateTime(`${day} 09:00`);
-    const end = parseViDateTime(`${day} 10:00`);
-    setEditing(null);
-    setTitle("");
-    setStartsAt(toViDateTimeInput(start));
-    setEndsAt(toViDateTimeInput(end));
-    setAllDay(false);
-    setEventOffsets(
-      defaultReminderOffsets.length ? [defaultReminderOffsets[0]] : [0],
-    );
-    setEditorError("");
-    setEditorVisible(true);
-  };
-
-  const beginEdit = (event: CalendarEvent) => {
-    if (readOnly || !canManageEvents) return;
-    setEditing(event);
-    setTitle(event.title);
-    setStartsAt(toViDateTimeInput(event.startsAt));
-    setEndsAt(toViDateTimeInput(event.endsAt));
-    setAllDay(!!event.allDay);
-    setEventOffsets([
-      ((event.reminderOffsets || [0])[0] ?? 0) as ReminderOffset,
-    ]);
-    setEditorError("");
-    setEditorVisible(true);
-  };
-
-  useEffect(() => {
-    if (!initialEvent) return;
-    setSelectedDay(new Date(initialEvent.startsAt));
-    beginEdit(initialEvent);
-    onInitialEventHandled?.();
-  }, [initialEvent?._id]);
-
-  const submit = async () => {
-    try {
-      if (readOnly || !canManageEvents)
-        throw new Error("Lịch dự án này chỉ được xem.");
-      setEditorError("");
-      let start = parseViDateTime(startsAt);
-      let end = parseViDateTime(endsAt);
-      if (allDay) {
-        start = parseViDateTime(`${formatViDate(start)} 00:00`);
-        end = parseViDateTime(`${formatViDate(end)} 00:00`);
-        if (end <= start && formatViDate(end) === formatViDate(start))
-          end = new Date(start.getTime() + 86400000);
-      }
-      if (!title.trim())
-        throw new Error("Nội dung sự kiện không được để trống.");
-      if (end <= start)
-        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu.");
-      setSaving(true);
-      await onSaveEvent(editing, {
-        title: title.trim(),
-        startsAt: start.toISOString(),
-        endsAt: end.toISOString(),
-        allDay,
-        reminderOffsets: eventOffsets,
-        projectId: fixedProjectId || null,
-      });
-      resetEditor();
-    } catch (error) {
-      setEditorError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const closeEditor = () => {
-    if (!saving) resetEditor();
-  };
+  const editor = useCalendarEventEditor({
+    selectedDay,
+    onSelectedDayChange: setSelectedDay,
+    fixedProjectId,
+    readOnly,
+    canManageEvents,
+    canCreateEvent: permissions.canCreateEvent,
+    initialEvent,
+    defaultReminderOffsets,
+    onInitialEventHandled,
+    onSaveEvent,
+  });
+  const { beginNew, beginEdit } = editor;
 
   const confirmDeleteEvent = (event: CalendarEvent) =>
     Alert.alert("Xóa sự kiện?", event.title, [
@@ -373,115 +244,14 @@ export default function CalendarPanel({
         )}
       </View>
 
-      {(mode === "week" || mode === "month") && (
-        <View style={styles.weekHeader}>
-          {WEEKDAY_LABELS.map((label, index) => (
-            <Text
-              key={label}
-              style={[styles.weekLabel, index === 6 && styles.sunday]}
-            >
-              {label}
-            </Text>
-          ))}
-        </View>
-      )}
-      {mode === "year" ? (
-        <View style={styles.yearGrid}>
-          {yearMonths.map((month, index) => {
-            const monthKey = dateKey(month).slice(0, 7);
-            const taskItems = visibleTasks.filter(
-              (task) =>
-                task.dueAt &&
-                dateKey(new Date(task.dueAt)).startsWith(monthKey),
-            );
-            const eventItems = visibleEvents.filter((event) =>
-              occursBetween(event, `${monthKey}-01`, `${monthKey}-31`),
-            );
-            const currentMonth =
-              dateKey(new Date()).slice(0, 7) === monthKey;
-            return (
-              <Pressable
-                key={monthKey}
-                accessibilityRole="button"
-                accessibilityLabel={`Tháng ${index + 1}, ${taskItems.length} deadline, ${eventItems.length} sự kiện`}
-                onPress={() => {
-                  setSelectedDay(month);
-                  setMode("month");
-                }}
-                style={[
-                  styles.yearMonthCell,
-                  currentMonth && styles.yearCurrentMonth,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.yearMonthText,
-                    currentMonth && styles.yearCurrentMonthText,
-                  ]}
-                >
-                  Tháng {index + 1}
-                </Text>
-                <View style={styles.dotRow}>
-                  {!!taskItems.length && <Text style={styles.dot}>●</Text>}
-                  {!!eventItems.length && (
-                    <Text style={[styles.dot, styles.eventDot]}>●</Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <View style={styles.calendarGrid}>
-          {cells.map((day, index) => {
-          if (!day)
-            return <View key={`empty-${index}`} style={styles.emptyDay} />;
-          const taskItems = visibleTasks.filter(
-            (task) => task.dueAt && sameDay(new Date(task.dueAt), day),
-          );
-          const eventItems = visibleEvents.filter((event) =>
-            occursOn(event, day),
-          );
-          const overdue = taskItems.some(
-            (task) =>
-              task.status !== "done" &&
-              task.dueAt &&
-              new Date(task.dueAt).getTime() < Date.now(),
-          );
-          return (
-            <Pressable
-              key={`${dateKey(day)}-${index}`}
-              onPress={() => setSelectedDay(day)}
-              style={[
-                styles.dayCell,
-                mode === "day" && styles.singleDayCell,
-                sameDay(day, selectedDay) && styles.selectedDay,
-                sameDay(day, new Date()) && styles.todayCell,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.dayNumber,
-                  sameDay(day, selectedDay) && styles.selectedDayText,
-                ]}
-              >
-                {Number(dateKey(day).slice(-2))}
-              </Text>
-              <View style={styles.dotRow}>
-                {!!taskItems.length && (
-                  <Text style={[styles.dot, overdue && styles.overdueDot]}>
-                    ●
-                  </Text>
-                )}
-                {!!eventItems.length && (
-                  <Text style={[styles.dot, styles.eventDot]}>●</Text>
-                )}
-              </View>
-            </Pressable>
-          );
-          })}
-        </View>
-      )}
+      <CalendarGrid
+        mode={mode}
+        selectedDay={selectedDay}
+        visibleTasks={visibleTasks}
+        visibleEvents={visibleEvents}
+        setSelectedDay={setSelectedDay}
+        setMode={setMode}
+      />
       <View style={styles.legend}>
         <Text style={styles.legendTask}>● Deadline</Text>
         <Text style={styles.legendEvent}>● Sự kiện</Text>
@@ -585,151 +355,7 @@ export default function CalendarPanel({
         </View>
       ))}
 
-      <Modal
-        animationType="slide"
-        hardwareAccelerated
-        onRequestClose={closeEditor}
-        statusBarTranslucent
-        transparent
-        visible={editorVisible}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <View style={styles.modalSheet} accessibilityViewIsModal>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeading}>
-                <Text accessibilityRole="header" style={styles.editorTitle}>
-                  {editing ? "Sửa sự kiện" : "Thêm sự kiện"}
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  {editing
-                    ? "Cập nhật nội dung và thời gian"
-                    : `Ngày ${formatViDate(selectedDay)}`}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityLabel="Đóng biểu mẫu sự kiện"
-                accessibilityRole="button"
-                disabled={saving}
-                hitSlop={8}
-                onPress={closeEditor}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>×</Text>
-              </Pressable>
-            </View>
-
-            {!!editorError && (
-              <View style={styles.editorErrorBox}>
-                <Text accessibilityRole="alert" style={styles.editorError}>
-                  {editorError}
-                </Text>
-              </View>
-            )}
-
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalContent}
-              keyboardDismissMode={
-                Platform.OS === "ios" ? "interactive" : "on-drag"
-              }
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.fieldLabel}>Nội dung sự kiện</Text>
-              <TextInput
-                accessibilityLabel="Nội dung sự kiện"
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Nhập nội dung sự kiện"
-                placeholderTextColor="#64748b"
-                style={styles.input}
-                keyboardType="default"
-                autoCapitalize="sentences"
-                autoCorrect
-                spellCheck
-              />
-              <NativeDateTimeField
-                label="Bắt đầu"
-                value={startsAt}
-                onChange={setStartsAt}
-                dateOnly={allDay}
-              />
-              <NativeDateTimeField
-                label="Kết thúc"
-                value={endsAt}
-                onChange={setEndsAt}
-                dateOnly={allDay}
-                minimumDate={parsedDateOrUndefined(startsAt)}
-              />
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: allDay }}
-                onPress={() => setAllDay((value) => !value)}
-                style={[
-                  styles.chip,
-                  styles.singleChip,
-                  allDay && styles.activeChip,
-                ]}
-              >
-                <Text
-                  style={[styles.chipText, allDay && styles.activeChipText]}
-                >
-                  {allDay ? "☑" : "☐"} Cả ngày
-                </Text>
-              </Pressable>
-              {allDay && (
-                <Text style={styles.muted}>
-                  Giờ được lưu thành 00:00; ngày kết thúc là ngày kế tiếp.
-                </Text>
-              )}
-
-              <ReminderSelect
-                value={eventOffsets[0] ?? 0}
-                onChange={(value) => setEventOffsets([value])}
-                disabled={saving}
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={saving}
-                onPress={closeEditor}
-                style={[
-                  styles.modalAction,
-                  styles.modalCancelAction,
-                  saving && styles.disabled,
-                ]}
-              >
-                <Text style={styles.modalCancelText}>Hủy</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ busy: saving, disabled: saving }}
-                disabled={saving}
-                onPress={() => void submit()}
-                style={[
-                  styles.modalAction,
-                  styles.modalSaveAction,
-                  saving && styles.disabled,
-                ]}
-              >
-                <Text style={styles.modalSaveText}>
-                  {saving
-                    ? "Đang lưu…"
-                    : editing
-                      ? "Lưu thay đổi"
-                      : "Tạo sự kiện"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <EventEditorModal editor={editor} selectedDay={selectedDay} />
     </View>
   );
 }

@@ -137,10 +137,10 @@ APK nằm tại `src/mobile/android/app/build/outputs/apk/debug/app-debug.apk`. 
 
 ### JDK và Android SDK trên Windows
 
-Cho terminal hiện tại:
+Cho terminal hiện tại, chọn thư mục JDK 17 đã cài trên máy (đường dẫn dưới đây là ví dụ):
 
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:JAVA_HOME = "C:\Java\jdk-17"
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 ```
 
@@ -151,6 +151,20 @@ sdk.dir=C:\\Users\\TEN_BAN\\AppData\\Local\\Android\\Sdk
 ```
 
 `local.properties` là cấu hình riêng của máy và không nên commit.
+
+Nếu `src/mobile/android/gradle.properties` có `org.gradle.java.home`, giá trị đó phải trỏ tới JDK 17 phù hợp; nó có thể ghi đè JDK chọn qua `JAVA_HOME`. JBR đi kèm Android Studio mới có thể là Java 24/25. Với cấu hình build hiện tại, dùng JDK 17 để tránh lỗi Prefab/CMake kèm thông báo `A restricted method in java.lang.System has been called`.
+
+Nếu SDK nằm ở ổ khác, dùng đúng thư mục có `platform-tools/adb.exe` cho cả `ANDROID_HOME` và `sdk.dir`. Ví dụ với SDK tại `F:\Downloads\AndroidSdk`:
+
+```powershell
+$env:ANDROID_HOME = "F:\Downloads\AndroidSdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+Test-Path "$env:ANDROID_HOME\platform-tools\adb.exe"
+```
+
+Nếu build báo `[CXX1101] ... did not have a source.properties file`, bản NDK tương ứng chưa được cài đầy đủ. Kiểm tra phiên bản trong log build, rồi cài lại đúng phiên bản qua **Android Studio → SDK Manager → SDK Tools → Show Package Details → NDK (Side by side)**. Đảm bảo SDK Manager đang dùng cùng thư mục SDK với dự án. [Hướng dẫn cài phiên bản NDK cụ thể](https://developer.android.com/studio/projects/install-ndk#specific-version).
+
+Không tự tạo `source.properties` để bỏ qua lỗi: compiler và các thư viện NDK cũng phải được cài đầy đủ. Sau khi cài xong, chạy lại `npm.cmd run android`.
 
 ## Luồng kiểm thử nhanh
 
@@ -219,6 +233,7 @@ deploy/      Mongo local, biến môi trường Internet và Caddy mẫu
 Tài liệu chính:
 
 - [Kiến trúc](docs/architecture.md)
+- [Bản đồ mã nguồn và quy ước bảo trì](docs/code-map.md)
 - [Chat lưu và giao offline](docs/direct-chat.md)
 - [Dự án phân cấp và phân quyền](docs/hierarchical-projects.md)
 - [Giao thức REST chat](docs/protocol.md)

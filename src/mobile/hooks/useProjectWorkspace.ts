@@ -1,19 +1,25 @@
-import { useRef, useState } from "react";
 import * as Sharing from "expo-sharing";
-
-import type { ChatGroup } from "../domain/chat.ts";
+import { useRef, useState } from "react";
 import {
-  API_URL,
-  api,
-  json,
-  type CalendarEvent,
-  type Discussion,
-  type DocumentRow,
-  type Progress,
-  type Project,
-  type Task,
+  getDiscussions,
+  getProject,
+  getProjectDocuments,
+  getProjectEvents,
+  getProjectProgress,
+  getProjectTasks,
+  loadProjectChatGroups,
+  projectDocumentUrl,
+  updateProjectResources,
 } from "../services/api.ts";
+
 import { ensureCachedProjectDocument } from "../services/attachmentCache.ts";
+import type {
+  CalendarEvent,
+  Discussion,
+  DocumentRow,
+  Progress,
+  Project,
+} from "../types/api.ts";
 
 type UseProjectWorkspaceOptions = {
   onReloadProject: (projectId: string) => Promise<unknown>;
@@ -42,13 +48,13 @@ export function useProjectWorkspace({
       documentRows,
       stats,
     ] = await Promise.all([
-      api<Project>(`/projects/${projectId}`),
-      api<ChatGroup[]>(`/projects/${projectId}/chat-groups`),
-      api<Task[]>(`/projects/${projectId}/tasks`),
-      api<CalendarEvent[]>(`/projects/${projectId}/events`),
-      api<Discussion[]>(`/projects/${projectId}/discussions`),
-      api<DocumentRow[]>(`/projects/${projectId}/documents`),
-      api<Progress>(`/projects/${projectId}/progress`),
+      getProject(projectId),
+      loadProjectChatGroups(projectId),
+      getProjectTasks(projectId),
+      getProjectEvents(projectId),
+      getDiscussions(projectId),
+      getProjectDocuments(projectId),
+      getProjectProgress(projectId),
     ]);
     projectRef.current = projectRow;
     setProject(projectRow);
@@ -85,16 +91,10 @@ export function useProjectWorkspace({
 
   const saveResources = async () => {
     if (!project) return;
-    await api(
-      `/projects/${project._id}/resources`,
-      json("PATCH", {
-        plannedHours: Number(resourceValues[0]),
-        actualHours: Number(resourceValues[1]),
-        plannedBudget: Number(resourceValues[2]),
-        spentBudget: Number(resourceValues[3]),
-        version: project.version,
-      }),
-    );
+    await updateProjectResources(project._id, {
+      plannedHours: Number(resourceValues[0]), actualHours: Number(resourceValues[1]),
+      plannedBudget: Number(resourceValues[2]), spentBudget: Number(resourceValues[3]), version: project.version,
+    });
     await onReloadProject(project._id);
   };
 
@@ -104,7 +104,7 @@ export function useProjectWorkspace({
       currentUserId,
       project._id,
       document,
-      `${API_URL}/projects/${project._id}/documents/${document._id}`,
+      projectDocumentUrl(project._id, document._id),
     );
     await Sharing.shareAsync(uri, { mimeType: document.mime });
   };

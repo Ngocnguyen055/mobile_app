@@ -1,17 +1,12 @@
 import { useState } from "react";
+import { getCalendar, putCalendarEvent, removeCalendarEvent } from "../services/api.ts";
 
-import {
-  api,
-  json,
-  type CalendarEvent,
-  type CalendarFeed,
-  type Task,
-} from "../services/api.ts";
 import {
   calendarProjectId,
   type CalendarScope,
 } from "../domain/calendarPolicy.ts";
 import { cancelEventReminder, syncEventReminder } from "../services/local.ts";
+import type { CalendarEvent, CalendarFeed, Task } from "../types/api.ts";
 import type { EventDraft } from "../types/index.ts";
 
 type UseCalendarEventsOptions = {
@@ -37,7 +32,7 @@ export function useCalendarEvents({
   };
 
   const loadCalendar = async () => {
-    const feed = await api<CalendarFeed>("/calendar");
+    const feed = await getCalendar();
     setCalendarFeed(feed);
     return feed;
   };
@@ -53,10 +48,7 @@ export function useCalendarEvents({
     current: CalendarEvent | null,
     draft: EventDraft,
   ) => {
-    const saved = await api<CalendarEvent>(
-      current ? `/events/${current._id}` : "/events",
-      json(current ? "PATCH" : "POST", draft),
-    );
+    const saved = await putCalendarEvent(current?._id || null, draft);
     let warning = "";
     try {
       await syncEventReminder(saved);
@@ -80,7 +72,7 @@ export function useCalendarEvents({
   };
 
   const deleteCalendarEvent = async (event: CalendarEvent) => {
-    await api(`/events/${event._id}`, json("DELETE"));
+    await removeCalendarEvent(event._id);
     let warning = "";
     try {
       await cancelEventReminder(event._id);

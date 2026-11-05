@@ -1,26 +1,25 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import {
+  useState,
+  type MutableRefObject
+} from "react";
 import type { ScrollView } from "react-native";
+import { patchTask, postTask, removeTask } from "../services/api.ts";
+import { useTaskFocus } from "./useTaskFocus.ts";
 
-import {
-  api,
-  json,
-  type Project,
-  type Task,
-  type User,
-} from "../services/api.ts";
-import {
-  formatViDate,
-  parseViDateTime,
-  toViDateTimeInput,
-} from "../utils/calendar.ts";
 import { calendarProjectId } from "../domain/calendarPolicy.ts";
+import { canChangeTaskStatus } from "../domain/projectPolicy.ts";
 import {
   cancelReminder,
   syncReminder,
   type ReminderOffset,
 } from "../services/local.ts";
-import { canChangeTaskStatus } from "../domain/projectPolicy.ts";
+import type { Project, Task, User } from "../types/api.ts";
 import type { ProjectTab } from "../types/index.ts";
+import {
+  formatViDate,
+  parseViDateTime,
+  toViDateTimeInput,
+} from "../utils/calendar.ts";
 
 type UseTasksOptions = {
   project: Project | null;
@@ -73,30 +72,15 @@ export function useTasks({
   const [expandedTaskGroups, setExpandedTaskGroups] = useState<
     Record<string, boolean>
   >({});
-  const [focusedTaskId, setFocusedTaskId] = useState("");
-  const taskGroupOffsets = useRef<Record<string, number>>({});
-  const taskGroupBodyOffsets = useRef<Record<string, number>>({});
-  const taskOffsets = useRef<Record<string, number>>({});
-  const pendingTaskFocus = useRef<{ taskId: string; groupKey: string } | null>(
-    null,
-  );
-  const focusedTaskTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (focusedTaskTimer.current) clearTimeout(focusedTaskTimer.current);
-    },
-    [],
-  );
-
-  const clearFocus = () => {
-    setFocusedTaskId("");
-    pendingTaskFocus.current = null;
-    if (focusedTaskTimer.current) {
-      clearTimeout(focusedTaskTimer.current);
-      focusedTaskTimer.current = null;
-    }
-  };
+  const {
+    focusedTaskId,
+    clearFocus,
+    focusTask,
+    resetFocusLayout,
+    onGroupLayout,
+    onGroupBodyLayout,
+    onTaskLayout,
+  } = useTaskFocus(contentScroll);
 
   const resetTaskForm = (selectedDay?: Date) => {
     const range = defaultTaskRange(selectedDay);
@@ -114,9 +98,7 @@ export function useTasks({
     setTaskSaving(false);
     setExpandedTaskGroups({});
     clearFocus();
-    taskGroupOffsets.current = {};
-    taskGroupBodyOffsets.current = {};
-    taskOffsets.current = {};
+    resetFocusLayout();
   };
 
   const beginNewTask = () => {
@@ -153,11 +135,8 @@ export function useTasks({
     setTaskSaving(true);
     try {
       const saved = editTask
-        ? await api<Task>(
-            `/projects/${project._id}/tasks/${editTask._id}`,
-            json("PATCH", { ...data, version: editTask.version }),
-          )
-        : await api<Task>(`/projects/${project._id}/tasks`, json("POST", data));
+        ? await patchTask(project._id, editTask._id, { ...data, version: editTask.version })
+        : await postTask(project._id, data);
       resetTaskForm();
       setTaskEditorVisible(false);
       let reminderWarning = "";
@@ -207,32 +186,6 @@ export function useTasks({
     setTaskEditorVisible(true);
   };
 
-  const scheduleFocusedTaskScroll = () => {
-    setTimeout(() => {
-      const pending = pendingTaskFocus.current;
-      if (!pending) return;
-      const groupOffset = taskGroupOffsets.current[pending.groupKey];
-      const bodyOffset = taskGroupBodyOffsets.current[pending.groupKey];
-      const taskOffset = taskOffsets.current[pending.taskId];
-      if (
-        groupOffset === undefined ||
-        bodyOffset === undefined ||
-        taskOffset === undefined
-      )
-        return;
-      pendingTaskFocus.current = null;
-      contentScroll.current?.scrollTo({
-        y: Math.max(0, groupOffset + bodyOffset + taskOffset - 12),
-        animated: true,
-      });
-      if (focusedTaskTimer.current) clearTimeout(focusedTaskTimer.current);
-      focusedTaskTimer.current = setTimeout(() => {
-        setFocusedTaskId("");
-        focusedTaskTimer.current = null;
-      }, 3_000);
-    }, 50);
-  };
-
   const openTaskInList = async (task: Task) => {
     const projectId = calendarProjectId(task.project);
     if (!projectId) throw new Error("Task không còn thuộc dự án hợp lệ.");
@@ -241,8 +194,7 @@ export function useTasks({
     resetTaskForm();
     setTaskEditorVisible(false);
     clearFocus();
-    setFocusedTaskId(task._id);
-    pendingTaskFocus.current = { taskId: task._id, groupKey };
+    focusTask(task._id, groupKey);
     setExpandedTaskGroups((current) => ({ ...current, [groupKey]: true }));
     onError("");
     onTabChange("tasks");
@@ -259,10 +211,7 @@ export function useTasks({
     if (!project) return;
     if (!currentUserId || !canChangeTaskStatus(project, task, currentUserId))
       throw new Error("Bạn chỉ được cập nhật task được giao cho mình.");
-    const saved = await api<Task>(
-      `/projects/${project._id}/tasks/${task._id}`,
-      json("PATCH", { status, version: task.version }),
-    );
+    const saved = await patchTask(project._id, task._id, { status, version: task.version });
     try {
       if (userIdOf(saved.assignee) === currentUserId)
         await syncReminder(saved, reminderOffsets);
@@ -281,7 +230,7 @@ export function useTasks({
   const deleteTask = async (task: Task) => {
     const id = calendarProjectId(task.project) || project?._id;
     if (!id) throw new Error("Không xác định được dự án của task.");
-    await api(`/projects/${id}/tasks/${task._id}`, json("DELETE"));
+    await removeTask(id, task._id);
     try {
       await cancelReminder(task._id);
     } catch (caught) {
@@ -289,19 +238,6 @@ export function useTasks({
     }
     await onReloadCalendar();
     if (project?._id === id) await onReloadProject(id, false);
-  };
-
-  const onGroupLayout = (groupKey: string, y: number) => {
-    taskGroupOffsets.current[groupKey] = y;
-    scheduleFocusedTaskScroll();
-  };
-  const onGroupBodyLayout = (groupKey: string, y: number) => {
-    taskGroupBodyOffsets.current[groupKey] = y;
-    scheduleFocusedTaskScroll();
-  };
-  const onTaskLayout = (taskId: string, y: number) => {
-    taskOffsets.current[taskId] = y;
-    scheduleFocusedTaskScroll();
   };
 
   return {

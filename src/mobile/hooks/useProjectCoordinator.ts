@@ -1,16 +1,12 @@
-import {
-  api,
-  type CalendarEvent,
-  type InboxNotification,
-  type Project,
-} from "../services/api.ts";
 import { calendarProjectId } from "../domain/calendarPolicy.ts";
+import { listProjects } from "../services/api.ts";
+import type { CalendarEvent, InboxNotification } from "../types/api.ts";
+import type { ProjectTab } from "../types/index.ts";
 import type { useCalendarEvents } from "./useCalendarEvents.ts";
 import type { useChat } from "./useChat.ts";
 import type { useProjectWorkspace } from "./useProjectWorkspace.ts";
 import type { useProjects } from "./useProjects.ts";
 import type { useTasks } from "./useTasks.ts";
-import type { ProjectTab } from "../types/index.ts";
 
 type Options = {
   projectsController: ReturnType<typeof useProjects>;
@@ -33,7 +29,7 @@ export function useProjectCoordinator({
 }: Options) {
   const loadHome = async () => {
     const [projectRows, feed] = await Promise.all([
-      api<Project[]>("/projects"),
+      listProjects(),
       calendarController.loadCalendar(),
     ]);
     projectsController.setProjectRows(projectRows);

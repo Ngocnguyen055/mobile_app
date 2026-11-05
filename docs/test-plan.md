@@ -24,8 +24,8 @@ Không xem unit test hoặc export là bằng chứng OAuth, notification hay bu
 | F10 | Chức năng | Tìm email, block và xóa hội thoại | Không tải danh bạ; block server-side; xóa một phía | direct-chat tests + UI |
 | C1 | Đồng thời | Hai manager PATCH cùng version cũ | Một request thành công, request còn lại 409 | API test + Mongo replica set |
 | C2 | Đồng thời | Outbox retry đồng thời cùng Message ID | Unique `(messageId, receiver)`, không bubble trùng | persistence test + DB query |
-| R1 | Lỗi/phục hồi | Dừng API khi gửi text, sau đó mở lại | SQLite/outbox giữ tin và tự retry | thủ công 2 thiết bị |
-| R2 | Lỗi/phục hồi | Force stop/restart app giữa lúc sync | Cursor phục hồi, upsert idempotent, không mất lịch sử | SQLite test + thiết bị |
+| R1 | Lỗi/phục hồi | Dừng API khi gửi text, sau đó mở lại | SQLite/outbox giữ tin và tự retry | `mobile-chat-sync.test.ts` + thủ công 2 thiết bị |
+| R2 | Lỗi/phục hồi | Force stop/restart app giữa lúc sync | Cursor phục hồi, upsert idempotent, không mất lịch sử | SQLite/sync tests + thiết bị |
 | S1 | Dữ liệu sai/bảo mật | Giả sender/receiver/group hoặc ID sai | JWT quyết định sender; schema/ACL từ chối | API persistence/security tests |
 | S2 | Dữ liệu sai/bảo mật | User ngoài dự án tải tệp/đọc group | 403/404, không lộ metadata/bytes | discussion/chat tests |
 | S3 | Dữ liệu sai/bảo mật | File quá 5 MiB hoặc quá 3 file | 400, không tạo message nửa chừng | multipart API test |

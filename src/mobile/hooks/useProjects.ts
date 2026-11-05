@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { listProjects, postProject } from "../services/api.ts";
 
-import { api, json, type Project } from "../services/api.ts";
+import type { Project } from "../types/api.ts";
 import {
   projectPageCount,
   type ProjectDateFilter,
@@ -32,7 +33,7 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
   };
 
   const loadProjects = async () => {
-    const rows = await api<Project[]>("/projects");
+    const rows = await listProjects();
     setProjectRows(rows);
     return rows;
   };
@@ -41,10 +42,7 @@ export function useProjects({ onOpenProject }: UseProjectsOptions) {
     if (!projectName.trim()) throw new Error("Vui lòng nhập tên dự án.");
     setProjectCreating(true);
     try {
-      const created = await api<Project>(
-        "/projects",
-        json("POST", { name: projectName.trim(), kind: projectKind }),
-      );
+      const created = await postProject(projectName.trim(), projectKind);
       setProjectName("");
       setProjectCreateVisible(false);
       setProjectPage(0);

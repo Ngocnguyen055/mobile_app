@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { api, json, type InboxNotification } from "../services/api.ts";
-import { formatViDateTime } from "../utils/calendar.ts";
+import { getNotifications, readAllNotifications, readNotification } from "../services/api.ts";
 import { styles as s } from "../styles/notifications.ts";
+import type { InboxNotification } from "../types/api.ts";
+import { formatViDateTime } from "../utils/calendar.ts";
 export default function NotificationsScreen({
   onOpen,
   onError,
@@ -13,7 +14,7 @@ export default function NotificationsScreen({
   const [items, setItems] = useState<InboxNotification[]>([]);
   const [busy, setBusy] = useState(false);
   const load = async () =>
-    setItems(await api<InboxNotification[]>("/notifications"));
+    setItems(await getNotifications());
   const run = async (action: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
@@ -52,7 +53,7 @@ export default function NotificationsScreen({
           disabled={busy}
           onPress={() =>
             void run(async () => {
-              await api("/notifications/read-all", json("PATCH"));
+              await readAllNotifications();
               await load();
             })
           }
@@ -76,7 +77,7 @@ export default function NotificationsScreen({
           onPress={() =>
             void run(async () => {
               if (!item.readAt)
-                await api(`/notifications/${item._id}/read`, json("PATCH"));
+                await readNotification(item._id);
               await load();
               if (item.project) await onOpen(item);
             })

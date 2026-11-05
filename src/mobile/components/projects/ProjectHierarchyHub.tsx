@@ -1,27 +1,23 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { createChildProject } from "../../services/api.ts";
+import { styles as s } from "../../styles/projectHierarchy.ts";
 
-import {
-  api,
-  json,
-  type Project,
-  type ProjectChildSummary,
-} from "../../services/api.ts";
 import {
   memberDisplayRole,
   orderedProjectMembers,
   roleLabels,
 } from "../../domain/projectPolicy.ts";
+import { colors } from "../../styles/theme.ts";
+import type { Project, ProjectChildSummary } from "../../types/api.ts";
 import type { ProjectTab } from "../../types/index.ts";
-import { cardShadow, colors } from "../../styles/theme.ts";
 import MemberDropdown from "../ui/MemberDropdown.tsx";
 import ProjectManagementPanel from "./ProjectManagementPanel.tsx";
 
@@ -139,14 +135,7 @@ export default function ProjectHierarchyHub({
     setBusy(true);
     setCreateError("");
     try {
-      await api<Project>(
-        `/projects/${project._id}/children`,
-        json("POST", {
-          name: childName.trim(),
-          managerId,
-          version: project.version,
-        }),
-      );
+      await createChildProject(project._id, { name: childName.trim(), managerId, version: project.version });
       setCreateVisible(false);
       setChildName("");
       setManagerId("");
@@ -338,134 +327,3 @@ export default function ProjectHierarchyHub({
     </>
   );
 }
-
-const s = StyleSheet.create({
-  hero: { gap: 12 },
-  roleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  roleBadge: {
-    borderRadius: 10,
-    backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  roleText: { color: colors.text, fontSize: 11, fontWeight: "800" },
-  parentLabel: { color: colors.textSoft, fontSize: 12 },
-  statsRow: {
-    flexDirection: "row",
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    paddingVertical: 18,
-    ...cardShadow,
-  },
-  stat: { flex: 1, paddingHorizontal: 16, gap: 5 },
-  statDivider: { width: 1, backgroundColor: colors.border },
-  statLabel: { color: colors.textSoft, fontSize: 12 },
-  statValue: { color: colors.text, fontSize: 27, fontWeight: "900" },
-  sectionHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 6,
-  },
-  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: "900" },
-  linkText: { color: colors.primaryDark, fontWeight: "800" },
-  primaryAction: {
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  primaryActionText: { color: "#FFFFFF", fontWeight: "800" },
-  secondaryAction: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 13,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  secondaryActionText: { color: colors.primaryDark, fontWeight: "800" },
-  filters: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  filter: {
-    borderRadius: 18,
-    backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  filterSelected: { backgroundColor: colors.primarySoft },
-  filterText: { color: colors.textSoft, fontSize: 12, fontWeight: "700" },
-  filterTextSelected: { color: colors.primaryDark },
-  progressList: { gap: 4 },
-  childList: { gap: 11 },
-  progressItem: { gap: 9, paddingHorizontal: 4, paddingVertical: 12 },
-  childCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 17,
-    backgroundColor: colors.surface,
-    padding: 14,
-    gap: 9,
-    ...cardShadow,
-  },
-  childCardLocked: { opacity: 0.45, elevation: 0, shadowOpacity: 0 },
-  cardPressed: { opacity: 0.72 },
-  childTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  childName: { flex: 1, color: colors.text, fontSize: 16, fontWeight: "900" },
-  childProgressCount: {
-    color: colors.text,
-    fontSize: 12,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  childArrow: { color: colors.textSoft, fontSize: 22 },
-  childMeta: { color: colors.textSoft, fontSize: 12 },
-  lockedHint: { color: colors.textSoft, fontSize: 10, fontStyle: "italic" },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-    backgroundColor: colors.border,
-  },
-  progressFill: { height: "100%", borderRadius: 4, backgroundColor: colors.primary },
-  emptyText: {
-    color: colors.textSoft,
-    textAlign: "center",
-    paddingVertical: 24,
-  },
-  overlay: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(24,32,52,0.48)",
-  },
-  modal: {
-    maxHeight: "90%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: colors.background,
-  },
-  modalContent: { padding: 18, paddingBottom: 30, gap: 12 },
-  modalTitle: { color: colors.text, fontSize: 21, fontWeight: "900" },
-  modalHint: { color: colors.textSoft, fontSize: 12, lineHeight: 18 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 13,
-    backgroundColor: colors.surface,
-    color: colors.text,
-    padding: 12,
-  },
-  errorText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
-  modalPrimary: {
-    alignItems: "center",
-    borderRadius: 13,
-    backgroundColor: colors.primary,
-    padding: 13,
-  },
-  modalPrimaryText: { color: "#FFFFFF", fontWeight: "900" },
-  modalSecondary: { alignItems: "center", padding: 11 },
-  modalSecondaryText: { color: colors.textSoft, fontWeight: "800" },
-  disabled: { opacity: 0.4 },
-});

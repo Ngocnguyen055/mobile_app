@@ -1,98 +1,35 @@
 import React from "react";
 import {
-  Pressable,
   SafeAreaView,
   ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  View,
+  StatusBar
 } from "react-native";
+import GroupComposer from "../components/chat/GroupComposer.tsx";
 
-import type {
-  CalendarEvent,
-  InboxNotification,
-  User,
-} from "../services/api.ts";
-import type { ChatGroup } from "../domain/chat.ts";
 import CalendarPanel from "../components/calendar/CalendarPanel.tsx";
-import NotificationsScreen from "./NotificationsScreen.tsx";
+import ChatToolbar from "../components/chat/ChatToolbar.tsx";
+import DirectComposer from "../components/chat/DirectComposer.tsx";
+import DirectInfoModal from "../components/chat/DirectInfoModal.tsx";
 import BottomNav from "../components/ui/BottomNav.tsx";
 import CalendarToolbar from "../components/ui/CalendarToolbar.tsx";
 import ErrorBanner from "../components/ui/ErrorBanner.tsx";
 import Header from "../components/ui/Header.tsx";
 import ProjectToolbar from "../components/ui/ProjectToolbar.tsx";
-import ChatToolbar from "../components/chat/ChatToolbar.tsx";
-import DirectComposer from "../components/chat/DirectComposer.tsx";
-import DirectInfoModal from "../components/chat/DirectInfoModal.tsx";
 import type { useCalendarEvents } from "../hooks/useCalendarEvents.ts";
 import type { useChat } from "../hooks/useChat.ts";
 import type { useProjectWorkspace } from "../hooks/useProjectWorkspace.ts";
 import type { useProjects } from "../hooks/useProjects.ts";
 import type { useReminders } from "../hooks/useReminders.ts";
 import type { useTasks } from "../hooks/useTasks.ts";
-import { colors } from "../styles/theme.ts";
-import type { MainView, ProjectTab } from "../types/index.ts";
 import { styles } from "../styles/app.ts";
+import { colors } from "../styles/theme.ts";
+import type { CalendarEvent, InboxNotification, User } from "../types/api.ts";
+import type { MainView, ProjectTab } from "../types/index.ts";
 import AccountScreen from "./AccountScreen.tsx";
 import MessagesScreen from "./MessagesScreen.tsx";
+import NotificationsScreen from "./NotificationsScreen.tsx";
 import ProjectDetailScreen from "./ProjectDetailScreen.tsx";
 import ProjectListScreen from "./ProjectListScreen.tsx";
-
-type GroupComposerProps = {
-  group: ChatGroup;
-  body: string;
-  uploading: boolean;
-  onBodyChange: (value: string) => void;
-  onSend: () => void;
-  onAttach: () => void;
-};
-
-function GroupComposer({
-  group,
-  body,
-  uploading,
-  onBodyChange,
-  onSend,
-  onAttach,
-}: GroupComposerProps) {
-  const canSend = !!body.trim() && !uploading;
-  return (
-    <View style={styles.chatComposer}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Gửi ảnh hoặc tệp vào nhóm"
-        disabled={uploading}
-        onPress={onAttach}
-        style={[styles.chatAttachmentButton, uploading && styles.disabled]}
-      >
-        <Text style={styles.chatAttachmentButtonText}>
-          {uploading ? "…" : "+"}
-        </Text>
-      </Pressable>
-      <TextInput
-        accessibilityLabel={`Tin nhắn gửi nhóm ${group.name}`}
-        editable={!uploading}
-        maxLength={4000}
-        multiline
-        onChangeText={onBodyChange}
-        placeholder="Nhắn tin"
-        placeholderTextColor={colors.textSoft}
-        style={styles.chatComposerInput}
-        value={body}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Gửi tin nhắn nhóm"
-        disabled={!canSend}
-        onPress={onSend}
-        style={[styles.chatSendButton, !canSend && styles.disabled]}
-      >
-        <Text style={styles.buttonText}>Gửi</Text>
-      </Pressable>
-    </View>
-  );
-}
 
 type Props = {
   user: User;

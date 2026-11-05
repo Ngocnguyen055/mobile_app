@@ -18,25 +18,34 @@ Hệ thống chỉ có hai tiến trình ứng dụng: Mobile và API. MongoDB g
 
 - `screens/`: màn hình cấp cao và điều hướng theo state.
 - `components/`: UI lịch, task, dự án, thảo luận và chat.
-- `hooks/`: điều phối state và luồng nghiệp vụ của màn hình.
-- `services/api.ts`: mọi request HTTP, token và chuyển đổi response.
-- `services/local.ts`: SQLite, outbox chat, cursor đồng bộ và reminder.
+- `hooks/`: điều phối state và hành động của màn hình; `hooks/chat/` tách state, đồng bộ, hội thoại cá nhân và nhóm.
+- `services/api/`: HTTP client/token và các lời gọi API theo chức năng. `services/api.ts` là đầu mối export để các nơi gọi tiếp tục tương thích.
+- `services/storage/`: schema, migration SQLite, chat/outbox/cursor và metadata cache tệp theo tài khoản.
+- `services/reminders.ts`: đặt/hủy/đối soát notification trên thiết bị. `services/local.ts` là đầu mối export cho lưu trữ và nhắc việc.
+- `services/chat/persistence.ts`: gửi outbox, giữ tin khi lỗi tạm thời và ghi trang sync trước khi tiến cursor.
+- `styles/app/`: style chia theo layout, UI chung, dự án, bộ lọc thời gian, task, chat và tài khoản; `styles/app.ts` gom lại registry.
 - `domain/`: kiểu và chính sách thuần, có thể test không cần React Native.
-- `types/`: kiểu dữ liệu API dùng chung trong Mobile.
+- `types/api.ts`: DTO của API dùng trong Mobile; `types/index.ts`: kiểu điều hướng và form. Các file này không khởi tạo native module.
 
 UI không truy cập MongoDB. API service không điều khiển component. Chính sách quyền hiển thị trong Mobile chỉ phục vụ trải nghiệm; API luôn kiểm tra lại quyền.
 
 ### `src/api`
 
-- `index.ts`: composition root, auth, task/event/project routes và khởi động server.
+- `index.ts`: kết nối MongoDB, khởi động server và deadline worker.
+- `app.ts`: lắp middleware và các nhóm route qua `createApi()`, dùng được trong test mà không mở kết nối MongoDB hay worker.
+- `config.ts`: đọc cấu hình và kiểm tra JWT secret của production.
+- `http/`: middleware JWT, validation chung, project context và xử lý lỗi HTTP.
+- `auth/`, `tasks/`, `calendar/`: route và schema request theo chức năng.
 - `models.ts`: schema/index Mongoose.
 - `projectAccess.ts`: vai trò và quyền dự án.
-- `projectRoutes.ts`: membership, phân cấp, archive, tiến độ và nguồn lực.
-- `discussionRoutes.ts`: bài, bình luận và attachment thảo luận.
+- `projectRoutes.ts`: lắp các route trong `projects/`: CRUD/phân cấp/archive/nguồn lực, membership, nhóm chat và tiến độ. Các thao tác transaction dùng chung nằm ở `projects/mutations.ts`.
+- `discussionRoutes.ts`: lắp các route trong `discussions/`: bài, bình luận và tài liệu; policy, schema và xử lý attachment có module riêng.
 - `chatPersistenceRoutes.ts`: endpoint store-and-forward, sync, read và attachment chat.
 - `chatPersistenceService.ts`: kiểm tra message, fan-out nhóm, cursor và delivery state.
 - `directChatRoutes.ts` / `directChatService.ts`: tìm user, block và ẩn hội thoại.
 - `notifications.ts`: hộp thư thông báo dự án/task/thảo luận.
+
+Hướng dẫn lần theo từng luồng và quy ước bảo trì: [Bản đồ mã nguồn](code-map.md).
 
 ## Dữ liệu chính
 

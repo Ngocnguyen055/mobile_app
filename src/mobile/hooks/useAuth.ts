@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
+import { authenticate, getCurrentUser } from "../services/api.ts";
 
-import {
-  api,
-  json,
-  restoreToken,
-  setToken,
-  type User,
-} from "../services/api.ts";
-import type { AuthMode } from "../types/index.ts";
+import { restoreToken, setToken } from "../services/api.ts";
 import { clearAttachmentCache } from "../services/attachmentCache.ts";
+import type { User } from "../types/api.ts";
+import type { AuthMode } from "../types/index.ts";
 
 type AuthCredentials = {
   mode: AuthMode;
@@ -30,7 +26,7 @@ export function useAuth({ onAuthenticated }: UseAuthOptions) {
     void (async () => {
       try {
         if (await restoreToken()) {
-          const me = await api<User>("/me");
+          const me = await getCurrentUser();
           setUser(me);
           onAuthenticated();
         }
@@ -42,12 +38,14 @@ export function useAuth({ onAuthenticated }: UseAuthOptions) {
     })();
   }, []);
 
-  const auth = async ({ mode, name, email, password }: AuthCredentials) => {
+  const auth = async ({
+    mode,
+    name,
+    email,
+    password,
+  }: AuthCredentials) => {
     const register = mode === "register";
-    const data = await api<{ token: string; user: User }>(
-      register ? "/auth/register" : "/auth/login",
-      json("POST", register ? { name, email, password } : { email, password }),
-    );
+    const data = await authenticate(mode, register ? { name, email, password } : { email, password });
     await setToken(data.token);
     onAuthenticated();
     setUser({ ...data.user, _id: data.user.id || data.user._id });
