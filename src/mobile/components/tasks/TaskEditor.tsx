@@ -10,14 +10,20 @@ import {
   View,
 } from "react-native";
 
-import type { Task, User } from "../../services/api.ts";
+import type { Project, Task, User } from "../../services/api.ts";
+import { roleLabels } from "../../domain/projectPolicy.ts";
 import { parseViDateTime } from "../../utils/calendar.ts";
 import NativeDateTimeField from "../ui/NativeDateTimeField.tsx";
 import { styles } from "../../styles/app.ts";
-import { filterTaskMembers } from "../../utils/taskGroups.ts";
+import {
+  filterTaskMembers,
+  orderTaskAssignees,
+  taskAssigneeRole,
+} from "../../utils/taskGroups.ts";
 import TextField from "../ui/TextField.tsx";
 
 type TaskEditorProps = {
+  project: Project;
   visible: boolean;
   saving: boolean;
   error: string;
@@ -47,6 +53,7 @@ const parsedDateOrUndefined = (value: string) => {
 };
 
 function TaskEditor({
+  project,
   visible,
   saving,
   error,
@@ -69,7 +76,12 @@ function TaskEditor({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const selectedAssignee = members.find((member) => member._id === assigneeId);
-  const filteredMembers = filterTaskMembers(members, search);
+  const orderedMembers = orderTaskAssignees(
+    project,
+    members,
+    currentUserId,
+  );
+  const filteredMembers = filterTaskMembers(orderedMembers, search);
 
   useEffect(() => {
     if (!visible) return;
@@ -233,31 +245,12 @@ function TaskEditor({
                     nestedScrollEnabled
                     style={styles.assigneeOptions}
                   >
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => selectAssignee("")}
-                      style={[
-                        styles.assigneeOption,
-                        !assigneeId && styles.assigneeOptionActive,
-                      ]}
-                    >
-                      <View style={styles.assigneeOptionAvatar}>
-                        <Text style={styles.assigneeOptionAvatarText}>—</Text>
-                      </View>
-                      <View style={styles.assigneeOptionCopy}>
-                        <Text style={styles.assigneeOptionName}>
-                          Chưa phân công
-                        </Text>
-                        <Text style={styles.assigneeOptionEmail}>
-                          Có thể giao cho thành viên sau
-                        </Text>
-                      </View>
-                      {!assigneeId && (
-                        <Text style={styles.assigneeOptionCheck}>✓</Text>
-                      )}
-                    </Pressable>
                     {filteredMembers.map((member) => {
                       const selected = assigneeId === member._id;
+                      const role =
+                        project.kind === "hierarchical"
+                          ? taskAssigneeRole(project, member)
+                          : null;
                       return (
                         <Pressable
                           accessibilityRole="button"
@@ -297,6 +290,31 @@ function TaskEditor({
                                   <Text style={styles.meBadgeText}>BẠN</Text>
                                 </View>
                               )}
+                              {role && (
+                                <View
+                                  style={[
+                                    styles.assigneeRoleBadge,
+                                    role === "DIRECTOR"
+                                      ? styles.assigneeRoleDirector
+                                      : role === "MANAGER"
+                                        ? styles.assigneeRoleManager
+                                        : styles.assigneeRoleMember,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.assigneeRoleBadgeText,
+                                      role === "DIRECTOR"
+                                        ? styles.assigneeRoleDirectorText
+                                        : role === "MANAGER"
+                                          ? styles.assigneeRoleManagerText
+                                          : styles.assigneeRoleMemberText,
+                                    ]}
+                                  >
+                                    {roleLabels[role]}
+                                  </Text>
+                                </View>
+                              )}
                             </View>
                             {!!member.email && (
                               <Text
@@ -313,13 +331,36 @@ function TaskEditor({
                         </Pressable>
                       );
                     })}
-                    {!filteredMembers.length && (
+                    {!filteredMembers.length && !!search.trim() && (
                       <View style={styles.assigneeEmpty}>
                         <Text style={styles.muted}>
                           Không tìm thấy thành viên phù hợp.
                         </Text>
                       </View>
                     )}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => selectAssignee("")}
+                      style={[
+                        styles.assigneeOption,
+                        !assigneeId && styles.assigneeOptionActive,
+                      ]}
+                    >
+                      <View style={styles.assigneeOptionAvatar}>
+                        <Text style={styles.assigneeOptionAvatarText}>—</Text>
+                      </View>
+                      <View style={styles.assigneeOptionCopy}>
+                        <Text style={styles.assigneeOptionName}>
+                          Chưa phân công
+                        </Text>
+                        <Text style={styles.assigneeOptionEmail}>
+                          Có thể giao cho thành viên sau
+                        </Text>
+                      </View>
+                      {!assigneeId && (
+                        <Text style={styles.assigneeOptionCheck}>✓</Text>
+                      )}
+                    </Pressable>
                   </ScrollView>
                 </View>
               )}

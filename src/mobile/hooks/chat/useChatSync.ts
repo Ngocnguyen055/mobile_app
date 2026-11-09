@@ -15,6 +15,8 @@ export function useChatSync({ state, user }: Options) {
     setMessages,
     setLogs,
     setChatContacts,
+    setChatContactsLoading,
+    setChatContactsReady,
     setBlockedUserIds,
     setDirectMessages,
     store,
@@ -93,33 +95,40 @@ export function useChatSync({ state, user }: Options) {
     const id = me._id || me.id!;
     const local = new MobileStore(id);
     store.current = local;
-    const [history, cachedContacts, cachedBlocked] = await Promise.all([
-      local.list(),
-      local.listDirectContacts(),
-      local.listDirectBlocked(),
-    ]);
-    if (!isCancelled() && store.current === local) {
-      setMessages(history);
-      setChatContacts(
-        cachedContacts.map((contact) => ({
-          id: contact.userId,
-          name: contact.name,
-          email: contact.email,
-        })),
-      );
-      setBlockedUserIds(cachedBlocked);
-      if (chatSyncTimer.current) clearInterval(chatSyncTimer.current);
-      void syncPersistentChat().catch((caught) =>
-        setLogs((current) => [
-          `Đồng bộ chat tạm gián đoạn: ${caught instanceof Error ? caught.message : String(caught)}`,
-          ...current,
-        ].slice(0, 100)),
-      );
-      chatSyncTimer.current = setInterval(() => {
-        void syncPersistentChat().catch(() => {
-          /* A queued message remains in SQLite until the API is reachable. */
-        });
-      }, 3_000);
+    setChatContactsLoading(true);
+    try {
+      const [history, cachedContacts, cachedBlocked] = await Promise.all([
+        local.list(),
+        local.listDirectContacts(),
+        local.listDirectBlocked(),
+      ]);
+      if (!isCancelled() && store.current === local) {
+        setMessages(history);
+        setChatContacts(
+          cachedContacts.map((contact) => ({
+            id: contact.userId,
+            name: contact.name,
+            email: contact.email,
+          })),
+        );
+        setChatContactsReady(true);
+        setBlockedUserIds(cachedBlocked);
+        if (chatSyncTimer.current) clearInterval(chatSyncTimer.current);
+        void syncPersistentChat().catch((caught) =>
+          setLogs((current) => [
+            `Đồng bộ chat tạm gián đoạn: ${caught instanceof Error ? caught.message : String(caught)}`,
+            ...current,
+          ].slice(0, 100)),
+        );
+        chatSyncTimer.current = setInterval(() => {
+          void syncPersistentChat().catch(() => {
+            /* A queued message remains in SQLite until the API is reachable. */
+          });
+        }, 3_000);
+      }
+    } finally {
+      if (!isCancelled() && store.current === local)
+        setChatContactsLoading(false);
     }
   };
 

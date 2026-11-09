@@ -15,6 +15,7 @@ type MessagesScreenProps = {
   currentUserId: string;
   contacts: ChatContact[];
   contactsLoading: boolean;
+  contactsReady: boolean;
   search: string;
   searchResults: ChatContact[];
   searching: boolean;
@@ -37,6 +38,7 @@ function MessagesScreen({
   currentUserId,
   contacts,
   contactsLoading,
+  contactsReady,
   search,
   searchResults,
   searching,
@@ -177,7 +179,23 @@ function MessagesScreen({
             </Pressable>
           );
         })}
-        {!contactsLoading && !conversations.length && (
+        {contactsLoading && !conversations.length && (
+          <View style={styles.emptyCard}>
+            <Text style={styles.strong}>Đang tải cuộc trò chuyện…</Text>
+            <Text style={styles.muted}>
+              Ứng dụng đang đọc lịch sử chat trên thiết bị.
+            </Text>
+          </View>
+        )}
+        {!contactsLoading && !contactsReady && !conversations.length && (
+          <View style={styles.emptyCard}>
+            <Text style={styles.strong}>Chưa tải được cuộc trò chuyện</Text>
+            <Text style={styles.muted}>
+              Lịch sử vẫn được giữ trên thiết bị. Nhấn Làm mới để thử lại.
+            </Text>
+          </View>
+        )}
+        {!contactsLoading && contactsReady && !conversations.length && (
           <View style={styles.emptyCard}>
             <Text style={styles.strong}>Chưa có cuộc trò chuyện</Text>
             <Text style={styles.muted}>

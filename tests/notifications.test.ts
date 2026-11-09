@@ -62,10 +62,11 @@ describe("durable project notifications", () => {
       },
       { _id: b, type: "task_updated", entityId: b, title: "Task" },
     ];
+    const populate = vi.fn(() => query);
     const query = {
       sort: () => query,
       limit: () => query,
-      populate: () => query,
+      populate,
       select: async () => rows,
     };
     vi.mocked(Notification.find).mockReturnValue(query as never);
@@ -90,6 +91,11 @@ describe("durable project notifications", () => {
       expect(Notification.find).toHaveBeenCalledWith({
         user: a,
         project: { $in: [p] },
+      });
+      expect(populate).toHaveBeenCalledWith({
+        path: "project",
+        select: "name kind parentProject",
+        populate: { path: "parentProject", select: "name" },
       });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

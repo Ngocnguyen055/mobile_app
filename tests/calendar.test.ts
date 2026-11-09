@@ -5,6 +5,7 @@ import {
   buildWeekDays,
   buildYearMonths,
   dateKey,
+  eventEndOneHourAfter,
   formatViCalendarTitle,
   formatViDate,
   formatViDateTime,
@@ -68,6 +69,15 @@ describe("Vietnamese calendar helpers", () => {
     expect(dateKey(afterMidnightUtc)).toBe("2026-09-27");
     expect(sameDay(afterMidnightUtc, parseViDateTime("27/09/2026 01:00"))).toBe(
       true,
+    );
+  });
+
+  it("sets a new event end one hour after its selected start", () => {
+    expect(eventEndOneHourAfter("09/11/2026 09:00")).toBe(
+      "09/11/2026 10:00",
+    );
+    expect(eventEndOneHourAfter("31/12/2026 23:30")).toBe(
+      "01/01/2027 00:30",
     );
   });
 

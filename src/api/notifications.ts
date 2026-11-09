@@ -110,7 +110,11 @@ export function installNotificationRoutes(app: Express) {
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit)
       .populate("actor", "name email")
-      .populate("project", "name")
+      .populate({
+        path: "project",
+        select: "name kind parentProject",
+        populate: { path: "parentProject", select: "name" },
+      })
       .select("-dedupeKey -__v");
     // Hiding a post also hides its old notification previews from regular members.
     const postIds = items

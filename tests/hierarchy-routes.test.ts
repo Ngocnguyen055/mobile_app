@@ -366,8 +366,9 @@ describe("project hierarchy mutations", () => {
       rootId,
       childId,
     ]);
+    const sortChildren = vi.fn(async () => [openChild, lockedChild]);
     vi.spyOn(Project, "find").mockReturnValue({
-      sort: async () => [openChild, lockedChild],
+      sort: sortChildren,
     } as never);
     vi.spyOn(Task, "find").mockReturnValue({
       select: () => ({
@@ -402,6 +403,7 @@ describe("project hierarchy mutations", () => {
     };
 
     expect(response.status).toBe(200);
+    expect(sortChildren).toHaveBeenCalledWith({ createdAt: 1, _id: 1 });
     expect(body.children).toMatchObject([
       {
         _id: childId,

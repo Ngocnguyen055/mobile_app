@@ -13,6 +13,7 @@ export function useChatState() {
   const [logs, setLogs] = useState<string[]>([]);
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatContactsLoading, setChatContactsLoading] = useState(false);
+  const [chatContactsReady, setChatContactsReady] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
   const [chatSearchResults, setChatSearchResults] = useState<ChatContact[]>([]);
   const [chatSearching, setChatSearching] = useState(false);
@@ -67,6 +68,7 @@ export function useChatState() {
     setGroup(null);
     setLogs([]);
     setChatContacts([]);
+    setChatContactsReady(false);
     setChatSearch("");
     setChatSearchResults([]);
     setChatSearching(false);
@@ -97,6 +99,8 @@ export function useChatState() {
     setChatContacts,
     chatContactsLoading,
     setChatContactsLoading,
+    chatContactsReady,
+    setChatContactsReady,
     chatSearch,
     setChatSearch,
     chatSearchResults,

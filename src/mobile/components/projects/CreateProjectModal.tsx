@@ -79,7 +79,7 @@ export default function CreateProjectModal({
               [
                 "hierarchical",
                 "Dự án phân cấp",
-                "Dự án tổng, dự án con và Trưởng phòng",
+                "Quản lý nhiều dự án nhỏ",
               ],
             ] as const
           ).map(([kind, label, description]) => (

@@ -14,7 +14,9 @@ export type ChatContact = {
 };
 export type ProjectSummary = {
   _id: string;
-  name: string
+  name: string;
+  kind?: "independent" | "hierarchical";
+  parentProject?: string | { _id: string; name: string } | null;
 };
 export type ProjectChildSummary = {
   _id: string;
@@ -68,6 +70,7 @@ export type Project = {
 };
 export type Task = {
   _id: string;
+  createdAt?: string;
   project: string | ProjectSummary;
   title: string;
   description: string;

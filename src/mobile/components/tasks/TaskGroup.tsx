@@ -1,10 +1,12 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import type { Project, Task } from "../../services/api.ts";
 import { styles } from "../../styles/app.ts";
 import type { TaskAssigneeGroup } from "../../utils/taskGroups.ts";
 import TaskCard from "./TaskCard.tsx";
+
+const TASK_PREVIEW_LIMIT = 3;
 
 type TaskGroupProps = {
   group: TaskAssigneeGroup;
@@ -35,10 +37,29 @@ function TaskGroup({
   onEditTask,
   onDeleteTask,
 }: TaskGroupProps) {
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const containsFocusedTask = group.tasks.some(
+    (task) => task._id === focusedTaskId,
+  );
+  const visibleTasks = showAllTasks
+    ? group.tasks
+    : group.tasks.slice(0, TASK_PREVIEW_LIMIT);
+  const hiddenTaskCount = Math.max(
+    0,
+    group.tasks.length - TASK_PREVIEW_LIMIT,
+  );
   const initial =
     group.key === "unassigned"
       ? "—"
       : group.name.trim().charAt(0).toLocaleUpperCase("vi");
+
+  useEffect(() => {
+    if (!expanded || group.tasks.length <= TASK_PREVIEW_LIMIT) {
+      setShowAllTasks(false);
+      return;
+    }
+    if (focusedTaskId && containsFocusedTask) setShowAllTasks(true);
+  }, [containsFocusedTask, expanded, focusedTaskId, group.tasks.length]);
 
   return (
     <View
@@ -95,7 +116,7 @@ function TaskGroup({
           }
           style={styles.taskGroupBody}
         >
-          {group.tasks.map((task) => (
+          {visibleTasks.map((task) => (
             <TaskCard
               key={task._id}
               task={task}
@@ -108,6 +129,26 @@ function TaskGroup({
               onDelete={onDeleteTask}
             />
           ))}
+          {group.tasks.length > TASK_PREVIEW_LIMIT && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAllTasks }}
+              onPress={() => setShowAllTasks((current) => !current)}
+              style={({ pressed }) => [
+                styles.taskGroupMoreButton,
+                pressed && styles.cardPressed,
+              ]}
+            >
+              <Text style={styles.taskGroupMoreText}>
+                {showAllTasks
+                  ? "Thu gọn"
+                  : `Xem thêm ${hiddenTaskCount} task`}
+              </Text>
+              <Text style={styles.taskGroupMoreIcon}>
+                {showAllTasks ? "⌃" : "⌄"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       )}
     </View>

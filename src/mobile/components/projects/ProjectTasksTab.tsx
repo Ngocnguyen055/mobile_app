@@ -116,6 +116,7 @@ function ProjectTasksTab({
         />
       ))}
       <TaskEditor
+        project={project}
         visible={editor.visible}
         saving={editor.saving}
         error={editor.error}

@@ -74,7 +74,7 @@ export function installProjectCrudRoutes(app: Express) {
       access.project.kind === "hierarchical" && !access.project.parentProject
         ? await Project.find({
           parentProject: access.project._id,
-        }).sort({ createdAt: -1, _id: -1 })
+        }).sort({ createdAt: 1, _id: 1 })
         : [];
     const accessibleIds = new Set(
       children.length ? await accessibleProjectIds(req.userId!) : [],

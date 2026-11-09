@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -25,6 +25,7 @@ import { styles } from "../styles/app.ts";
 import { colors } from "../styles/theme.ts";
 import type { CalendarEvent, InboxNotification, User } from "../types/api.ts";
 import type { MainView, ProjectTab } from "../types/index.ts";
+import { getNotifications } from "../services/api/notifications.ts";
 import AccountScreen from "./AccountScreen.tsx";
 import MessagesScreen from "./MessagesScreen.tsx";
 import NotificationsScreen from "./NotificationsScreen.tsx";
@@ -82,6 +83,29 @@ export default function AppRouter({
   onOpenNotification,
   onLogout,
 }: Props) {
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const refreshNotificationIndicator = useCallback(async () => {
+    try {
+      const notifications = await getNotifications();
+      setHasUnreadNotifications(
+        notifications.some((notification) => !notification.readAt),
+      );
+    } catch {
+      // Keep the last known indicator while the API is temporarily unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void refreshNotificationIndicator();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [refreshNotificationIndicator]);
+
+  useEffect(() => {
+    void refreshNotificationIndicator();
+  }, [mainView, refreshNotificationIndicator]);
+
   const projectListScreen = (
     <ProjectListScreen
       projects={projectsController.projects}
@@ -139,6 +163,7 @@ export default function AppRouter({
       <Header
         userName={user.name}
         notificationsActive={mainView === "notifications"}
+        hasUnreadNotifications={hasUnreadNotifications}
         onOpenNotifications={() => onSelectMainView("notifications")}
       />
       {mainView === "calendar" && (
@@ -282,6 +307,7 @@ export default function AppRouter({
             currentUserId={user._id}
             contacts={chatController.chatContacts}
             contactsLoading={chatController.chatContactsLoading}
+            contactsReady={chatController.chatContactsReady}
             search={chatController.chatSearch}
             searchResults={chatController.chatSearchResults}
             searching={chatController.chatSearching}
@@ -318,7 +344,11 @@ export default function AppRouter({
           />
         )}
         {mainView === "notifications" && (
-          <NotificationsScreen onOpen={onOpenNotification} onError={onError} />
+          <NotificationsScreen
+            onOpen={onOpenNotification}
+            onError={onError}
+            onUnreadChange={setHasUnreadNotifications}
+          />
         )}
       </ScrollView>
       {mainView === "messages" && chatController.directContact && (

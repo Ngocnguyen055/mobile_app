@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { Task } from "../src/mobile/services/api.ts";
+import type { Project, Task } from "../src/mobile/services/api.ts";
 import {
+  compareTasksForDisplay,
   filterTaskMembers,
   groupTasksByAssignee,
+  orderTaskAssignees,
   orderTaskPeople,
+  taskAssigneeRole,
 } from "../src/mobile/utils/taskGroups.ts";
 
 const task = (id: string, assignee?: Task["assignee"]) =>
@@ -71,5 +74,88 @@ describe("task assignee groups", () => {
     expect(
       filterTaskMembers(members, "school").map((member) => member._id),
     ).toEqual(["two"]);
+  });
+
+  it("puts the current user first, then hierarchy roles and names", () => {
+    const project = {
+      kind: "hierarchical",
+      owner: "director",
+      manager: "manager-z",
+      parentProject: "root",
+      children: [],
+    } as unknown as Project;
+    const members = [
+      { _id: "employee-a", name: "An", email: "a@test", role: "EMPLOYEE" },
+      {
+        _id: "manager-z",
+        name: "Zed",
+        email: "z@test",
+        role: "EMPLOYEE",
+      },
+      { _id: "director", name: "Bình", email: "b@test", role: "OWNER" },
+      { _id: "me", name: "Chi", email: "c@test", role: "EMPLOYEE" },
+      {
+        _id: "manager-a",
+        name: "An",
+        email: "m@test",
+        role: "MANAGER",
+      },
+    ] as const;
+
+    expect(
+      orderTaskAssignees(project, [...members], "me").map(
+        (member) => member._id,
+      ),
+    ).toEqual(["me", "director", "manager-a", "manager-z", "employee-a"]);
+    expect(taskAssigneeRole(project, members[2])).toBe("DIRECTOR");
+    expect(taskAssigneeRole(project, members[1])).toBe("MANAGER");
+    expect(taskAssigneeRole(project, members[0])).toBe("EMPLOYEE");
+  });
+
+  it("orders active tasks by deadline and FIFO creation before completed tasks", () => {
+    const rows = [
+      {
+        ...task("done", "me"),
+        status: "done",
+        dueAt: "2026-11-06T01:00:00.000Z",
+        createdAt: "2026-11-01T01:00:00.000Z",
+      },
+      {
+        ...task("later", "me"),
+        status: "todo",
+        dueAt: "2026-11-08T01:00:00.000Z",
+        createdAt: "2026-11-01T01:00:00.000Z",
+      },
+      {
+        ...task("soon-new", "me"),
+        status: "doing",
+        dueAt: "2026-11-07T01:00:00.000Z",
+        createdAt: "2026-11-03T01:00:00.000Z",
+      },
+      {
+        ...task("soon-old", "me"),
+        status: "todo",
+        dueAt: "2026-11-07T01:00:00.000Z",
+        createdAt: "2026-11-02T01:00:00.000Z",
+      },
+      {
+        ...task("no-deadline", "me"),
+        status: "todo",
+        dueAt: null,
+        createdAt: "2026-10-01T01:00:00.000Z",
+      },
+    ] as Task[];
+
+    expect([...rows].sort(compareTasksForDisplay).map((item) => item._id)).toEqual([
+      "soon-old",
+      "soon-new",
+      "later",
+      "no-deadline",
+      "done",
+    ]);
+    expect(
+      groupTasksByAssignee(rows, [{ _id: "me", name: "Bình" }], "me")[0]
+        .tasks.map((item) => item._id),
+    ).toEqual(["soon-old", "soon-new", "later", "no-deadline", "done"]);
   });
 });

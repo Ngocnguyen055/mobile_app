@@ -8,6 +8,7 @@ export const REMINDER_OFFSETS: readonly ReminderOffset[] = [
   604800000, 86400000, 3600000, 1800000, 300000, 0,
 ];
 const reminderOffsets = new Set<number>(REMINDER_OFFSETS);
+const EVENT_REMINDER_CONTENT_VERSION = 2;
 const notificationIds = (value?: string) => {
   if (!value) return [];
   try {
@@ -120,6 +121,7 @@ export async function syncEventReminder(event: CalendarEvent) {
     event.note,
     event.allDay,
     offsets,
+    EVENT_REMINDER_CONTENT_VERSION,
   ]);
   const old = await conn.getFirstAsync<{
     notification_ids: string;
@@ -142,7 +144,8 @@ export async function syncEventReminder(event: CalendarEvent) {
       if (when <= Date.now()) continue;
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: `Sắp diễn ra: ${event.title}`,
+          title:
+            offset === 0 ? event.title : `Sắp diễn ra: ${event.title}`,
           body: event.allDay
             ? `Sự kiện ngày ${formatViDateTime(event.startsAt).slice(0, 10)}`
             : `Bắt đầu lúc ${formatViDateTime(event.startsAt)}`,

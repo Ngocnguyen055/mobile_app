@@ -3,6 +3,7 @@ import type { ReminderOffset } from "../services/local.ts";
 import type { CalendarEvent } from "../types/api.ts";
 import type { EventDraft } from "../types/index.ts";
 import {
+  eventEndOneHourAfter,
   formatViDate,
   parseViDateTime,
   toViDateTimeInput
@@ -35,7 +36,7 @@ export function useCalendarEventEditor({
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState("");
+  const [startsAt, setStartsAtValue] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [allDay, setAllDay] = useState(false);
   const [eventOffsets, setEventOffsets] = useState<ReminderOffset[]>(
@@ -48,7 +49,7 @@ export function useCalendarEventEditor({
     setEditing(null);
     setEditorVisible(false);
     setTitle("");
-    setStartsAt("");
+    setStartsAtValue("");
     setEndsAt("");
     setAllDay(false);
     setEventOffsets(defaultReminderOffsets);
@@ -62,7 +63,7 @@ export function useCalendarEventEditor({
     const end = parseViDateTime(`${day} 10:00`);
     setEditing(null);
     setTitle("");
-    setStartsAt(toViDateTimeInput(start));
+    setStartsAtValue(toViDateTimeInput(start));
     setEndsAt(toViDateTimeInput(end));
     setAllDay(false);
     setEventOffsets(
@@ -76,7 +77,7 @@ export function useCalendarEventEditor({
     if (readOnly || !canManageEvents) return;
     setEditing(event);
     setTitle(event.title);
-    setStartsAt(toViDateTimeInput(event.startsAt));
+    setStartsAtValue(toViDateTimeInput(event.startsAt));
     setEndsAt(toViDateTimeInput(event.endsAt));
     setAllDay(!!event.allDay);
     setEventOffsets([
@@ -92,6 +93,16 @@ export function useCalendarEventEditor({
     beginEdit(initialEvent);
     onInitialEventHandled?.();
   }, [initialEvent?._id]);
+
+  const setStartsAt = (value: string) => {
+    setStartsAtValue(value);
+    if (editing) return;
+    try {
+      setEndsAt(eventEndOneHourAfter(value));
+    } catch {
+      /* Keep the current end while a date-time value is incomplete. */
+    }
+  };
 
   const submit = async () => {
     try {

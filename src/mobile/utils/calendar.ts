@@ -173,6 +173,11 @@ export function parseViDateTime(input: string) {
   return parsed;
 }
 
+export function eventEndOneHourAfter(startsAt: string) {
+  const start = parseViDateTime(startsAt);
+  return toViDateTimeInput(new Date(start.getTime() + 60 * 60 * 1000));
+}
+
 export function buildMonthGrid(input: DateInput): (Date | null)[] {
   const { year, month } = vietnamParts(input);
   const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();

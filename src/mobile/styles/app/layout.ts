@@ -48,6 +48,7 @@ export const layoutStyles = StyleSheet.create({
   calendarToolbar: { paddingBottom: 12, gap: 6 },
   projectToolbar: { paddingBottom: 8 },
   notificationBell: {
+    position: "relative",
     width: 36,
     height: 36,
     borderRadius: 12,
@@ -61,6 +62,17 @@ export const layoutStyles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  notificationUnreadDot: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    backgroundColor: "#EF4444",
   },
   drawerOverlay: {
     flex: 1,

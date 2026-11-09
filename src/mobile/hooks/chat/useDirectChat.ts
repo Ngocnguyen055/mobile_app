@@ -37,6 +37,7 @@ export function useDirectChat({
     setLogs,
     setChatContacts,
     setChatContactsLoading,
+    setChatContactsReady,
     chatSearch,
     setChatSearchResults,
     setChatSearching,
@@ -161,8 +162,10 @@ export function useDirectChat({
           updatedAt: Date.now(),
         });
       }
-      setChatContacts([...contacts.values()]);
-      return [...contacts.values()];
+      const loadedContacts = [...contacts.values()];
+      setChatContacts(loadedContacts);
+      setChatContactsReady(true);
+      return loadedContacts;
     } finally {
       setChatContactsLoading(false);
     }
